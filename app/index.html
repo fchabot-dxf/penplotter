@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pen Plotter</title>
+<style>
+:root {
+    --bg: #1e1e1e;
+    --panel: #252526;
+    --panel-2: #2d2d30;
+    --border: #3e3e42;
+    --text: #d4d4d4;
+    --text-dim: #8a8a8a;
+    --accent: #0e639c;
+    --accent-hi: #1177bb;
+    --danger: #c4444f;
+    --canvas-bg: #f8f8f5;
+    --canvas-grid: #e8e8e0;
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0; padding: 0; height: 100%;
+    font: 13px/1.35 -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); overflow: hidden;
+    user-select: none;
+}
+#app { display: grid; grid-template-columns: 260px 1fr 300px; height: 100vh; }
+.panel { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.panel:last-child { border-right: 0; border-left: 1px solid var(--border); }
+.panel h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--text-dim); margin: 0; padding: 10px 12px 6px;
+}
+.panel section { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.panel section:last-child { border-bottom: 0; }
+
+/* ===== toolbar ===== */
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 6px; }
+.tool {
+    background: var(--panel-2); border: 1px solid transparent; color: var(--text);
+    padding: 10px 4px; cursor: pointer; font-size: 18px; border-radius: 3px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.tool:hover { border-color: var(--border); }
+.tool.active { background: var(--accent); border-color: var(--accent-hi); }
+.tool small { font-size: 9px; color: var(--text-dim); }
+.tool.active small { color: rgba(255,255,255,.8); }
+
+/* ===== layer panel ===== */
+.layers { padding: 4px; max-height: 50vh; overflow-y: auto; }
+.layer-row {
+    display: grid; grid-template-columns: 14px 14px 1fr 18px; gap: 4px;
+    align-items: center; padding: 4px 6px; border-radius: 3px;
+    cursor: pointer; margin-bottom: 2px;
+}
+.layer-row.indented { padding-left: 18px; }
+.layer-row.has-selection { box-shadow: inset 2px 0 0 #1177bb; }
+.layer-row .sel-count {
+    background: #1177bb; color: white; font-size: 9px;
+    padding: 1px 5px; border-radius: 8px; font-variant-numeric: tabular-nums;
+    justify-self: end;
+}
+
+.group-row {
+    display: grid; grid-template-columns: 12px 14px 1fr auto; gap: 4px;
+    align-items: center; padding: 5px 6px 5px 2px;
+    margin: 2px 0; border-radius: 3px; cursor: pointer;
+    background: rgba(255,255,255,.02);
+}
+.group-row:hover { background: rgba(255,255,255,.05); }
+.group-row .chevron { color: var(--text-dim); font-size: 10px; text-align: center; }
+.group-row .group-name { font-size: 12px; font-weight: 600; text-transform: lowercase;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-row .group-count { color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; padding-right: 4px; }
+
+/* Right-side toolpath layer rows */
+.tp-layer-row {
+    display: grid; grid-template-columns: 14px 14px 1fr; gap: 6px;
+    align-items: center; padding: 4px 8px; border-radius: 3px;
+    cursor: pointer; margin-bottom: 2px;
+}
+.tp-layer-row:hover { background: var(--panel-2); }
+.tp-layer-row.active { background: var(--accent); color: white; }
+.tp-layer-row.indented { padding-left: 20px; }
+.tp-layer-row .exp { margin: 0; width: 14px; height: 14px; cursor: pointer; accent-color: var(--accent); }
+.tp-layer-row .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,.2); }
+.tp-layer-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-row:hover { background: var(--panel-2); }
+.layer-row.active { background: var(--accent); }
+.layer-row .swatch {
+    width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(255,255,255,.2);
+    cursor: pointer;
+}
+.layer-row .vis { color: var(--text-dim); font-size: 12px; cursor: pointer; }
+.layer-row .vis:hover { color: var(--text); }
+.layer-row .name { font-size: 12px; background: transparent; border: 0; color: inherit;
+    width: 100%; padding: 2px; }
+.layer-row .name:focus { background: rgba(0,0,0,.3); outline: 1px solid var(--accent-hi); }
+.layer-row .del { color: var(--text-dim); cursor: pointer; text-align: center; font-size: 11px; }
+.layer-row .del:hover { color: var(--danger); }
+.layer-actions { display: flex; gap: 4px; padding: 4px 6px 6px; }
+.btn {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 9px; cursor: pointer; font-size: 12px; border-radius: 3px;
+}
+.btn:hover { background: #3a3a3d; }
+.btn.primary { background: var(--accent); border-color: var(--accent-hi); }
+.btn.primary:hover { background: var(--accent-hi); }
+.btn.primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn.danger { color: #ff8a92; border-color: #6a3a3e; }
+.btn.danger:hover { background: #4a2a2e; }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ===== canvas ===== */
+.canvas-wrap {
+    background: #2a2a2a; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+}
+.canvas-svg { background: var(--canvas-bg); box-shadow: 0 0 0 1px var(--border), 0 4px 24px rgba(0,0,0,.4); }
+.canvas-svg.tool-line, .canvas-svg.tool-rect, .canvas-svg.tool-ellipse,
+.canvas-svg.tool-polyline, .canvas-svg.tool-freehand { cursor: crosshair; }
+.canvas-svg.tool-select { cursor: default; }
+.canvas-svg.tool-rotate, .canvas-svg.tool-scale { cursor: grab; }
+.canvas-svg.panning { cursor: grab; }
+/* No `fill` or `stroke-width` here on purpose — let each shape's own
+   attributes take effect (CSS rules outrank XML presentation attrs and
+   would force fill:none / fixed stroke width on every shape if set).
+   The parent <g fill="none" stroke-width=0.3> provides a sensible default
+   for un-attributed (user-drawn) shapes. */
+.shape { pointer-events: stroke; }
+.shape[fill]:not([fill="none"]) { pointer-events: fill; }
+.shape.selected { stroke-dasharray: 4 2; }
+.preview { stroke: #888; stroke-dasharray: 3 3; fill: none; stroke-width: 0.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+.status {
+    position: absolute; bottom: 8px; left: 8px; right: 8px;
+    color: var(--text-dim); font-size: 11px; pointer-events: none;
+    display: flex; justify-content: space-between;
+}
+.status .coords { background: rgba(0,0,0,.5); padding: 3px 6px; border-radius: 3px; }
+.help {
+    position: absolute; top: 8px; right: 8px;
+    color: var(--text-dim); font-size: 10px;
+    background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 3px;
+    pointer-events: none; max-width: 260px;
+}
+
+/* ===== settings/right panel ===== */
+.right { overflow-y: auto; }
+.field { padding: 4px 12px; display: grid; grid-template-columns: 1fr 100px; gap: 8px; align-items: center; }
+.field label { font-size: 12px; color: var(--text); }
+.field label small { color: var(--text-dim); display: block; font-size: 10px; }
+.field input[type=number] {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 6px; border-radius: 3px; font-size: 12px; width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+.field input:focus { outline: 1px solid var(--accent-hi); }
+.export {
+    padding: 12px; margin-top: auto; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 8px;
+}
+.import-row { padding: 8px 12px; display: flex; gap: 6px; }
+
+/* ===== toast ===== */
+#toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); padding: 10px 16px; border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.6);
+    opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 100;
+    max-width: 60vw;
+}
+#toast.show { opacity: 1; }
+#toast.error { border-color: var(--danger); color: #ffb0b6; }
+
+/* drop zone overlay */
+.drop-overlay {
+    position: absolute; inset: 0; background: rgba(14,99,156,.2);
+    border: 2px dashed var(--accent-hi); display: none;
+    align-items: center; justify-content: center; pointer-events: none;
+    font-size: 18px; color: white; z-index: 50;
+}
+.drop-overlay.show { display: flex; }
+
+input[type=file] { display: none; }
+
+/* Contextual menus — body[data-mode] is set by preview-controls.js. */
+body[data-mode="toolpath"]   .mode-svg-only,
+body[data-mode="simulation"] .mode-svg-only { display: none; }
+body[data-mode="svg"]        .mode-plot-only,
+body[data-mode="svg"]        .mode-toolpath-only { display: none; }
+body[data-mode="simulation"] .mode-toolpath-only { display: none; }
+
+/* tool icons */
+.tool svg { display: block; }
+.tool { color: var(--text); }
+.tool.active { color: white; }
+
+/* preview toggles (top-left of canvas) */
+.view-toggles {
+    position: absolute; top: 8px; left: 8px; display: flex; gap: 4px;
+    background: rgba(20,20,20,.85); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px; z-index: 20;
+}
+.view-toggle {
+    background: transparent; border: 0; color: var(--text-dim);
+    padding: 4px 10px; cursor: pointer; font-size: 11px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: .05em;
+}
+.view-toggle:hover { color: var(--text); }
+.view-toggle.on { background: var(--accent); color: white; }
+
+/* stats line (bottom strip) */
+.status #stats { font-variant-numeric: tabular-nums; }
+
+/* active-layer panel — compact field layout with select dropdowns */
+#activeLayerContent .field { grid-template-columns: 1fr 110px; padding: 3px 12px; }
+#activeLayerContent select {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 6px; border-radius: 3px; font-size: 12px; width: 100%;
+}
+#activeLayerContent select:focus { outline: 1px solid var(--accent-hi); }
+#activeLayerContent .subhead {
+    font-size: 10px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: .06em;
+    padding: 8px 12px 2px;
+}
+#activeLayerContent .empty,
+#styleContent .empty {
+    color: var(--text-dim); font-size: 12px; padding: 8px 12px; font-style: italic;
+}
+#styleContent .field { padding: 4px 12px; }
+.paint-swatches {
+    display: flex; gap: 4px; align-items: center;
+}
+.swatch-btn {
+    position: relative; width: 24px; height: 22px; padding: 0;
+    border: 1px solid var(--border); border-radius: 3px;
+    cursor: pointer; background: var(--panel-2);
+}
+.swatch-btn:hover { border-color: var(--text-dim); }
+.swatch-btn.active { border-color: var(--accent-hi); box-shadow: 0 0 0 1px var(--accent-hi); }
+.none-swatch {
+    background-color: white;
+    background-image: linear-gradient(to top right,
+        transparent calc(50% - 1.5px),
+        #c4444f calc(50% - 1.5px), #c4444f calc(50% + 1.5px),
+        transparent calc(50% + 1.5px));
+}
+.paint-status {
+    font-size: 11px; color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mixed-swatch {
+    background-image:
+        repeating-linear-gradient(45deg, #888 0 4px, #ccc 4px 8px);
+}
+
+/* Swatch-based picker popover: None + custom-color + preset grid + hex. */
+.paint-popover {
+    position: fixed; z-index: 200;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 4px; padding: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.5);
+    display: flex; flex-direction: column; gap: 8px;
+    width: 188px;
+}
+.paint-popover-row { display: flex; gap: 6px; }
+.paint-popover-tile { width: 24px; height: 24px; position: relative; }
+.paint-popover-tile.active {
+    border-color: var(--accent-hi); box-shadow: 0 0 0 1px var(--accent-hi);
+}
+.paint-popover-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+}
+.custom-swatch {
+    background: conic-gradient(
+        red, orange, yellow, lime, cyan, blue, magenta, red);
+}
+.paint-popover-hex {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); font-size: 12px; padding: 4px 6px;
+    width: 100%; border-radius: 3px; font-family: ui-monospace, monospace;
+}
+</style>
+</head>
+<body>
+<div id="app">
+    <!-- LEFT: tools + layers -->
+    <div class="panel">
+        <section style="border-bottom: 1px solid var(--border); padding: 6px;">
+            <button class="btn primary" id="importBtn" style="width: 100%;">Import SVG…</button>
+            <input type="file" id="importFile" accept=".svg,image/svg+xml">
+        </section>
+        <section style="border-bottom: 1px solid var(--border); padding: 6px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+                <button class="btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button>
+            </div>
+        </section>
+        <section>
+            <h2>Select</h2>
+            <div class="tools">
+                <button class="tool active" data-tool="select" title="Select (V) — click a shape; drag empty area for marquee; shift to add">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="currentColor">
+                        <path d="M4 2 L4 14 L7.2 11.2 L9.4 15.5 L11.4 14.5 L9.3 10.3 L13 10.3 Z"/>
+                    </svg>
+                    <small>V</small>
+                </button>
+            </div>
+        </section>
+        <section class="mode-svg-only">
+            <h2>Transform</h2>
+            <div class="tools" id="transformTools">
+                <button class="tool" data-tool="rotate" title="Rotate (T) — drag a shape to rotate around its center">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 9 A 5 5 0 1 0 11 13.6"/>
+                        <polyline points="14,5 14,9 10,9"/>
+                    </svg>
+                    <small>T</small>
+                </button>
+                <button class="tool" data-tool="scale" title="Scale (S) — drag a shape to scale from its center">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="12" height="12" rx="0.5"/>
+                        <polyline points="6,9 9,6 12,9"/>
+                        <polyline points="9,3 9,15"/>
+                    </svg>
+                    <small>S</small>
+                </button>
+            </div>
+        </section>
+        <section class="mode-svg-only">
+            <h2>Draw</h2>
+            <div class="tools" id="drawTools">
+                <button class="tool" data-tool="line" title="Line (L)">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                        <line x1="3" y1="15" x2="15" y2="3"/>
+                        <circle cx="3" cy="15" r="1.4" fill="currentColor" stroke="none"/>
+                        <circle cx="15" cy="3" r="1.4" fill="currentColor" stroke="none"/>
+                    </svg>
+                    <small>L</small>
+                </button>
+                <button class="tool" data-tool="rect" title="Rectangle (R)">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="4.5" width="12" height="9" rx="0.5"/>
+                    </svg>
+                    <small>R</small>
+                </button>
+                <button class="tool" data-tool="ellipse" title="Ellipse (E)">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <ellipse cx="9" cy="9" rx="6" ry="5"/>
+                    </svg>
+                    <small>E</small>
+                </button>
+                <button class="tool" data-tool="polyline" title="Polyline (P) — Enter to finish">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="2,14 6,5 10,11 15,3"/>
+                        <circle cx="2" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+                        <circle cx="6" cy="5" r="1.2" fill="currentColor" stroke="none"/>
+                        <circle cx="10" cy="11" r="1.2" fill="currentColor" stroke="none"/>
+                        <circle cx="15" cy="3" r="1.2" fill="currentColor" stroke="none"/>
+                    </svg>
+                    <small>P</small>
+                </button>
+                <button class="tool" data-tool="freehand" title="Freehand (F)">
+                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                        <path d="M2 12 C 4 6, 6 15, 8 9 S 12 4, 14 10 S 16 14, 16 14"/>
+                    </svg>
+                    <small>F</small>
+                </button>
+            </div>
+        </section>
+        <section id="stylePanel" class="mode-svg-only">
+            <h2>Style (selected)</h2>
+            <div id="styleContent"></div>
+        </section>
+        <section style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+            <h2>Layers</h2>
+            <div class="layers" id="layers"></div>
+            <div class="layer-actions">
+                <button class="btn" id="addLayer">+ Layer</button>
+                <button class="btn danger" id="clearLayer" title="Clear active layer">Clear</button>
+            </div>
+        </section>
+        <section>
+            <h2>Document</h2>
+            <div class="field">
+                <label>Width <small>mm</small></label>
+                <input type="number" id="docW" min="10" max="2000" step="1" value="200">
+            </div>
+            <div class="field">
+                <label>Height <small>mm</small></label>
+                <input type="number" id="docH" min="10" max="2000" step="1" value="200">
+            </div>
+        </section>
+    </div>
+
+    <!-- CENTER: canvas -->
+    <div class="canvas-wrap" id="canvasWrap">
+        <svg class="canvas-svg tool-select" id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="drop-overlay" id="dropOverlay">Drop SVG to import</div>
+
+        <div class="view-toggles">
+            <button class="view-toggle on" id="toggleSvg" title="Show/hide the artwork">SVG</button>
+            <button class="view-toggle" id="toggleToolpath" title="Show/hide the exact toolpath the plotter will draw">Toolpath</button>
+            <button class="view-toggle" id="toggleSimulation" title="Render strokes at each layer's pen width — what the plotted page looks like">Simulation</button>
+        </div>
+
+        <div class="help">Pan: space + drag · Zoom: scroll · Delete: Del · Polyline finish: Enter or double-click</div>
+        <div class="status">
+            <span id="docInfo"></span>
+            <span id="stats"></span>
+            <span class="coords" id="coords">0.00, 0.00 mm</span>
+        </div>
+    </div>
+
+    <!-- RIGHT: toolpath / plot settings + export -->
+    <div class="panel right">
+        <section class="mode-plot-only">
+            <h2>Toolpath Layers</h2>
+            <div id="toolpathLayers" style="padding: 4px; max-height: 30vh; overflow-y: auto;"></div>
+            <div class="layer-actions">
+                <button class="btn" id="exportAll" title="Select every layer for export" style="flex:1;">Select all</button>
+                <button class="btn" id="exportNone" title="Deselect every layer" style="flex:1;">Deselect all</button>
+            </div>
+        </section>
+        <section id="activeLayerPanel" class="mode-plot-only">
+            <h2>Active Layer</h2>
+            <div id="activeLayerContent"></div>
+        </section>
+        <section class="mode-toolpath-only">
+            <h2>Plotter Settings</h2>
+            <div class="field">
+                <label>Pen up Z <small>mm clear of paper</small></label>
+                <input type="number" id="penUpZ" step="0.1" value="5">
+            </div>
+            <div class="field">
+                <label>Pen down Z <small>mm (negative = overtravel)</small></label>
+                <input type="number" id="penDownZ" step="0.1" value="-1">
+            </div>
+            <div class="field">
+                <label>Draw feed <small>mm/min XY</small></label>
+                <input type="number" id="drawFeed" step="100" value="2000">
+            </div>
+            <div class="field">
+                <label>Z feed <small>mm/min for lift/lower</small></label>
+                <input type="number" id="zFeed" step="100" value="1000">
+            </div>
+            <div class="field">
+                <label>Simplify tolerance <small>mm</small></label>
+                <input type="number" id="tol" step="0.01" value="0.1">
+            </div>
+        </section>
+        <div class="export">
+            <button class="btn primary" id="exportBtn">Export G-code (.zip)</button>
+            <small style="color: var(--text-dim); text-align: center;">One .gcode per layer</small>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
