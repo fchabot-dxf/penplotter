@@ -8,7 +8,7 @@
 //      and group by that color. Each unique color becomes one layer.
 //      "One color = one pen = one layer" matches pen-plotter conventions.
 
-import { state, makeLayer } from "./state.js";
+import { state, makeArtLayer, makeToolpath, findOrCreatePlotColor } from "./state.js";
 import { canvasWrap, dropOverlay, $, toast, INK_NS } from "./dom.js";
 import { fitViewport } from "./viewport.js";
 import { render } from "./render.js";
@@ -59,7 +59,12 @@ export function importSvgText(text) {
     $("#docW").value = state.doc.w;
     $("#docH").value = state.doc.h;
 
-    state.layers = [];
+    state.artLayers = [];
+    state.toolpaths = [];
+    // Reset the plot-color palette so it strictly reflects this import.
+    // (If the user wants to keep accumulating across imports we can change
+    // this — for now each import = a clean palette discovery.)
+    state.plotColors = [];
 
     const inkscapeLayers = Array.from(root.children).filter(n =>
         n.tagName.toLowerCase() === "g"
@@ -72,11 +77,17 @@ export function importSvgText(text) {
         importByColorGrouping(root);
     }
 
-    if (state.layers.length === 0) {
-        state.layers.push(makeLayer("imported"));
+    if (state.artLayers.length === 0) {
+        const layer = makeArtLayer("imported");
+        state.artLayers.push(layer);
+        
+        const tp = makeToolpath("imported (outline)", "outline", layer.id);
+        state.toolpaths.push(tp);
     }
-    state.activeLayerId = state.layers[state.layers.length - 1].id;
-    state.selectedShapeIds.clear();
+    state.activeArtLayerId = state.artLayers[state.artLayers.length - 1].id;
+    state.activeToolpathId = state.toolpaths[state.toolpaths.length - 1].id;
+    // Start with nothing selected — let the user choose what to work with.
+    state.selectedShapeIds = new Set();
     fitViewport();
     render();
 }
@@ -87,114 +98,127 @@ function importFromInkscapeLayers(layerGroups) {
     for (const g of layerGroups) {
         const name = g.getAttributeNS(INK_NS, "label")
             || g.getAttribute("id")
-            || `layer ${state.layers.length + 1}`;
+            || `layer ${state.artLayers.length + 1}`;
         const inherited = inheritPaint(g, EMPTY_PAINT);
         const shapes = [];
         for (const node of Array.from(g.children)) collectShapes(node, inherited, shapes);
         const layerColor = penColorFor(inherited) || "#111111";
-        const layer = makeLayer(name, layerColor);
+        const layer = makeArtLayer(name, layerColor);
         layer.shapes = shapes;
-        state.layers.push(layer);
+        state.artLayers.push(layer);
+
+        // Auto-create starter outline toolpath and target the imported shapes.
+        const tp = makeToolpath(`${name} (outline)`, "outline", layer.id);
+        tp.targetShapeIds = layer.shapes.map(s => s.id);
+        // Link to a plot color so the pen palette gets populated.
+        const pc = findOrCreatePlotColor(layerColor, colorName(layerColor));
+        tp.plotColorId = pc.id;
+        state.toolpaths.push(tp);
     }
 }
 
 function importByColorGrouping(root) {
-    // Hybrid: respect the source SVG tree AND split by color/role.
-    //   - Each top-level <g> becomes a cluster, named after its
-    //     inkscape:label or id.
-    //   - Loose shapes at the SVG root form an implicit "ungrouped" cluster.
-    //   - Within each cluster, shapes split by (color, role) into sub-
-    //     layers — one pen per sub-layer.
-    //   - A shape with both fill and stroke produces two entries in the
-    //     cluster (one per role).
-    const clusters = []; // [{ groupName, items: [{ shape, color, role }] }]
-    const topLevel = Array.from(root.children);
+    // Two-pass model, each panel gets the grouping that fits it:
+    //
+    //   Pass 1 (art layers) — mirror the SVG <g> tree as-is. One art
+    //     layer per group; shapes keep their per-element _fill/_stroke.
+    //     No color splitting; the left panel shows the SVG hierarchy.
+    //
+    //   Pass 2 (toolpaths) — one toolpath PER SHAPE, carrying that
+    //     shape's color + role. The right panel groups these into a
+    //     three-level tree: plot color folder → stroke/fill subfolder
+    //     → individual toolpath row per path.
+    const allItems = [];
+    walk(root, EMPTY_PAINT, allItems, []);
 
-    const looseShapes = topLevel.filter(n => n.tagName?.toLowerCase() !== "g");
-    if (looseShapes.length) {
-        const items = [];
-        for (const node of looseShapes) walk(node, EMPTY_PAINT, items);
-        if (items.length) clusters.push({ groupName: "ungrouped", items });
+    // ---- Pass 1: art layers from SVG groups ----
+    const layerBuckets = new Map();
+    for (const item of allItems) {
+        const pathKey = item.groupPath.join("/");
+        if (!layerBuckets.has(pathKey)) {
+            layerBuckets.set(pathKey, { groupPath: item.groupPath, shapes: [] });
+        }
+        layerBuckets.get(pathKey).shapes.push(item.shape);
+    }
+    for (const b of layerBuckets.values()) {
+        const name = b.groupPath.length ? b.groupPath.join(" / ") : "ungrouped";
+        const layer = makeArtLayer(name, "#111111");
+        layer.shapes = b.shapes;
+        layer.groupPath = [...b.groupPath];
+        layer.group = b.groupPath[0] || "";
+        state.artLayers.push(layer);
     }
 
-    let groupIdx = 0;
-    for (const g of topLevel) {
-        if (g.tagName?.toLowerCase() !== "g") continue;
-        groupIdx++;
-        const items = [];
-        const groupPaint = inheritPaint(g, EMPTY_PAINT);
-        for (const child of Array.from(g.children)) walk(child, groupPaint, items);
-        if (!items.length) continue;
-        const name = g.getAttributeNS(INK_NS, "label")
-            || g.getAttribute("id")
-            || `group ${groupIdx}`;
-        clusters.push({ groupName: name, items });
-    }
-
-    // Within each cluster: bucket by (color, role).
-    const onlyOneCluster = clusters.length === 1;
-    for (const cluster of clusters) {
-        const buckets = new Map();
-        for (const item of cluster.items) {
-            const key = `${item.color}|${item.role}`;
-            if (!buckets.has(key)) {
-                buckets.set(key, { color: item.color, role: item.role, shapes: [] });
-            }
-            buckets.get(key).shapes.push(item.shape);
+    // ---- Pass 2: one toolpath per shape ----
+    let idx = 0;
+    for (const item of allItems) {
+        idx++;
+        const pc = findOrCreatePlotColor(item.color, colorName(item.color));
+        const tp = makeToolpath(`path ${idx}`, item.role === "fill" ? "fill" : "outline", null);
+        tp.targetShapeIds = [item.shape.id];
+        tp.plotColorId = pc.id;
+        if (item.role === "fill") {
+            tp.fill.pattern = "hatch";
+            tp.drawOutline = false;
+        } else {
+            tp.fill.pattern = "none";
+            tp.drawOutline = true;
         }
-        // Fills first (render behind strokes in SVG view + plot first).
-        const ordered = [...buckets.values()].sort((a, b) =>
-            a.role === b.role ? 0 : (a.role === "fill" ? -1 : 1)
-        );
-        const prefix = onlyOneCluster ? "" : `${cluster.groupName} / `;
-        for (const b of ordered) {
-            const baseName = b.role === "fill"
-                ? `${colorName(b.color)} (fill)`
-                : colorName(b.color);
-            const layer = makeLayer(prefix + baseName, b.color);
-            layer.shapes = b.shapes;
-            layer.role = b.role;
-            layer.group = cluster.groupName;
-            if (b.role === "fill") {
-                layer.fill.pattern = "hatch";
-                layer.drawOutline = false;
-            } else {
-                layer.fill.pattern = "none";
-                layer.drawOutline = true;
-            }
-            state.layers.push(layer);
-        }
+        state.toolpaths.push(tp);
     }
 }
 
-function walk(node, parentPaint, out) {
+function walk(node, parentPaint, out, groupPath = []) {
     const paint = inheritPaint(node, parentPaint);
     const tag = node.tagName && node.tagName.toLowerCase();
-    if (tag === "g" || tag === "svg") {
-        for (const child of Array.from(node.children)) walk(child, paint, out);
+    if (tag === "svg") {
+        // Don't add the root SVG to the path.
+        for (const child of Array.from(node.children)) walk(child, paint, out, groupPath);
+        return;
+    }
+    if (tag === "g") {
+        // Use the most identifying name available — Inkscape's user-facing
+        // label wins, then id, then class. Skip anonymous/empty groups so
+        // they don't clutter the panel with "group" entries.
+        const name = node.getAttributeNS(INK_NS, "label")
+            || node.getAttribute("id")
+            || node.getAttribute("class")
+            || "";
+        const nextPath = name ? [...groupPath, name] : groupPath;
+        for (const child of Array.from(node.children)) walk(child, paint, out, nextPath);
         return;
     }
     const shape = nodeToShape(node);
     if (!shape) return;
     // Emit one entry per role the shape has. A shape with both fill and
-    // stroke → two entries, two layers, two pens.
+    // stroke → two entries, two layers, two pens. groupPath gets attached
+    // so the layer/toolpath panels can render the full SVG hierarchy.
+    // Tri-state semantics on each shape:
+    //   undefined → inherit from layer's <g>
+    //   null      → explicit "none"
+    //   string    → that color
+    // We pin BOTH _fill and _stroke on import so the SVG view doesn't
+    // accidentally inherit a stroke from the layer default on fill-only
+    // imported shapes (or vice versa).
     if (paint.fill) {
         out.push({
-            shape: { ...shape, id: shape.id + "_f", _fill: paint.fill },
-            color: paint.fill, role: "fill",
+            shape: { ...shape, id: shape.id + "_f", _fill: paint.fill, _stroke: null },
+            color: paint.fill, role: "fill", groupPath: [...groupPath],
         });
     }
     if (paint.stroke) {
         out.push({
-            shape: { ...shape, id: shape.id + "_s", _stroke: paint.stroke },
-            color: paint.stroke, role: "stroke",
+            shape: { ...shape, id: shape.id + "_s", _stroke: paint.stroke, _fill: null },
+            color: paint.stroke, role: "stroke", groupPath: [...groupPath],
         });
     }
-    // No fill, no stroke → default to a thin black outline.
     if (!paint.fill && !paint.stroke) {
+        // SVG's default fill is black when neither fill nor stroke is
+        // set. Match the browser's rendering: produce a fill toolpath,
+        // not a stroke one.
         out.push({
-            shape: { ...shape, _stroke: "#000000" },
-            color: "#000000", role: "stroke",
+            shape: { ...shape, _fill: "#000000", _stroke: null },
+            color: "#000000", role: "fill", groupPath: [...groupPath],
         });
     }
 }
@@ -221,29 +245,65 @@ function inheritPaint(node, parentPaint) {
         fill: fill === undefined ? parentPaint.fill : fill,
         stroke: stroke === undefined ? parentPaint.stroke : stroke,
     };
-    // undefined = "not set on this element" (use parent)
-    // null      = "explicitly none" or no-paint
-    // string    = a color
 }
 
 function readPaint(node, attr) {
     const direct = node.getAttribute && node.getAttribute(attr);
     if (direct != null) {
-        const v = direct.trim().toLowerCase();
-        if (v === "none" || v === "transparent") return null;
-        if (v !== "") return normalizeColor(direct);
+        const raw = direct.trim();
+        const lower = raw.toLowerCase();
+        const gradientMatch = lower.match(/^url\(\s*['"]?#([^\)'"]+)['"]?\s*\)$/);
+        if (gradientMatch) {
+            const color = resolveGradientColor(node, gradientMatch[1]);
+            if (color != null) return color;
+        }
+        if (lower === "none" || lower === "transparent") return null;
+        if (lower !== "") return normalizeColor(raw);
     }
     const style = node.getAttribute && node.getAttribute("style");
     if (style) {
         const re = new RegExp(`(?:^|;)\\s*${attr}\\s*:\\s*([^;]+)`, "i");
         const m = style.match(re);
         if (m) {
-            const v = m[1].trim().toLowerCase();
-            if (v === "none" || v === "transparent") return null;
-            return normalizeColor(m[1].trim());
+            const raw = m[1].trim();
+            const lower = raw.toLowerCase();
+            const gradientMatch = lower.match(/^url\(\s*['"]?#([^\)'"]+)['"]?\s*\)$/);
+            if (gradientMatch) {
+                const color = resolveGradientColor(node, gradientMatch[1]);
+                if (color != null) return color;
+            }
+            if (lower === "none" || lower === "transparent") return null;
+            return normalizeColor(raw);
         }
     }
     return undefined;
+}
+
+function resolveGradientColor(node, gradientId) {
+    const doc = node.ownerDocument || document;
+    const grad = doc.getElementById(gradientId);
+    if (!grad) return undefined;
+    const tag = grad.tagName && grad.tagName.toLowerCase();
+    if (tag !== "lineargradient" && tag !== "radialgradient") return undefined;
+
+    const stopColors = [];
+    for (const stop of Array.from(grad.querySelectorAll("stop"))) {
+        const stopColor = parseStopColor(stop);
+        if (stopColor) stopColors.push(stopColor);
+    }
+    if (!stopColors.length) return undefined;
+    return normalizeColor(stopColors[0]);
+}
+
+function parseStopColor(stop) {
+    const direct = stop.getAttribute && stop.getAttribute("stop-color");
+    if (direct != null && direct.trim() !== "") return direct.trim();
+    const style = stop.getAttribute && stop.getAttribute("style");
+    if (style) {
+        const m = style.match(/(?:^|;)\s*stop-color\s*:\s*([^;]+)/i);
+        if (m && m[1].trim() !== "") return m[1].trim();
+    }
+    return null;
 }
 
 /** Pen color = fill if it exists and isn't none, else stroke, else null.
@@ -319,8 +379,6 @@ function normalizeColor(color) {
     }
     _colorProbe.style.color = "";
     _colorProbe.style.color = c;
-    // Inline `.style.color` echoes the input string ("red"). We need the
-    // *resolved* color, which only `getComputedStyle` returns.
     const computed = window.getComputedStyle(_colorProbe).color;
     if (computed) {
         const m = computed.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/);

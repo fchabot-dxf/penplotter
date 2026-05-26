@@ -6,15 +6,43 @@ export const uid = (prefix = "id") => `${prefix}${nextId++}`;
 
 export const state = {
     doc: { w: 200, h: 200 },
-    layers: [],
-    activeLayerId: null,
+    artLayers: [],
+    get layers() { return this.artLayers; },
+    set layers(value) { this.artLayers = value; },
+    activeArtLayerId: null,
+    toolpaths: [],
+    activeToolpathId: null,
+    // Plot colors = the pens the user actually owns. Discovered from
+    // imported SVGs, editable in the Plot Colors panel. Art layers point
+    // at a plot color via layer.plotColorId so renames/recolorings here
+    // cascade everywhere the pen is used.
+    plotColors: [],
     tool: "select",
     selectedShapeIds: new Set(),
+    // Toolpath multi-selection — populated by box-select in toolpath mode.
+    // activeToolpathId stays the "primary" (last-clicked / first-selected).
+    selectedToolpathIds: new Set(),
+    // When set, canvas shape selection feeds back into this toolpath's
+    // targetShapeIds. Enter via double-click on a toolpath row, exit
+    // via Esc / clicking another row.
+    targetEditingToolpathId: null,
+    // The pen folder currently "selected" in the toolpath layers panel.
+    // New toolpaths created via the + Outline / + Fill buttons inherit
+    // this plotColorId so they land in the folder you just clicked.
+    selectedPenId: null,
     settings: { pen_up_z: 5, pen_down_z: -1, draw_feed: 2000, z_feed: 1000, tolerance_mm: 0.1 },
     viewport: { scale: 1, panX: 0, panY: 0 },
     interaction: null,
     spaceDown: false,
-    preview: { showSvg: true, showToolpath: false, showSimulation: false },
+    // Two modes only — SVG view or Toolpath view. The "simulate pens" flag
+    // lives separately; when set, the Toolpath view renders each stroke at
+    // its pen width (the old "Simulation" mode) instead of as a thin line.
+    preview: { showSvg: true, showToolpath: false, simulatePens: false },
+    // Identity of the cloud project we last loaded or saved. Save (the
+    // "save" button, no name prompt) overwrites this id via PUT; Save
+    // As creates a new id. Cleared when the user opens a fresh / blank
+    // project or clears state.
+    currentProject: { id: null, name: null },
 };
 
 /** Default fill settings applied to new and imported layers. */
@@ -30,43 +58,88 @@ export const DEFAULT_OUTLINE = {
     frequency: 0.7,
 };
 
-export function makeLayer(name, color = "#111111") {
+export function makeArtLayer(name, color = "#111111") {
     return {
         id: uid("layer"),
         name,
-        color,
+        color,            // pure SVG/design concern — untouched by plot colors
         visible: true,
         shapes: [],
-        fill: { ...DEFAULT_FILL },
-        outline: { ...DEFAULT_OUTLINE },
-        penWidth: DEFAULT_PEN_WIDTH,
-        // If false, the shape outlines aren't plotted — only the fill
-        // pattern (if any). Set on fill-only layers created at import time
-        // so a single SVG shape with both stroke + fill doesn't double-trace
-        // the outline.
-        drawOutline: true,
-        // Include this layer in the G-code export. Independent of `visible`
-        // (which controls canvas display).
+        group: "",
+    };
+}
+
+export function makePlotColor(name, color) {
+    return { id: uid("pen"), name, color };
+}
+
+/** Look up an existing plot color by exact hex, or create one. Returns
+ *  the plot-color object. Used at import time to seed the pen palette. */
+export function findOrCreatePlotColor(color, suggestedName) {
+    const norm = (color || "").toLowerCase();
+    let pc = state.plotColors.find(p => p.color.toLowerCase() === norm);
+    if (pc) return pc;
+    pc = makePlotColor(suggestedName || color, color);
+    state.plotColors.push(pc);
+    return pc;
+}
+
+/** Resolve a toolpath's plotting color: the linked plot color, or a
+ *  reasonable default if unlinked. */
+export function toolpathColor(tp) {
+    if (!tp) return "#111111";
+    if (tp.plotColorId) {
+        const pc = state.plotColors.find(p => p.id === tp.plotColorId);
+        if (pc) return pc.color;
+    }
+    return tp.type === "fill" ? "#ff8a3d" : "#3aa3ff";
+}
+
+export function makeToolpath(name, type, targetArtLayerId = null) {
+    return {
+        id: uid("toolpath"),
+        name,
+        type, // "outline" or "fill"
+        targetType: "selection",
+        targetArtLayerId, // retained for compatibility, but selection is the default target
+        targetShapeIds: [],
+        // Which pen plots this operation. Null = use the default scheme color
+        // (blue/orange) per type. Set at import time and editable in the UI.
+        plotColorId: null,
         export: true,
-        // Editorial role — affects display name + sensible defaults.
-        // "outline" = strokes only; "fill" = fill-only (drawOutline=false,
-        // fill.pattern=hatch); "mixed" = user-drawn (both possible).
-        role: "mixed",
+        visible: true,
+        penWidth: DEFAULT_PEN_WIDTH,
+        drawOutline: type === "outline",
+        outline: { ...DEFAULT_OUTLINE },
+        fill: {
+            pattern: type === "fill" ? "hatch" : "none",
+            angle: 45,
+            spacing: 2.0
+        },
     };
 }
 
 export function initLayers() {
-    const layer = makeLayer("layer 1");
-    state.layers = [layer];
-    state.activeLayerId = layer.id;
+    const layer = makeArtLayer("layer 1");
+    state.artLayers = [layer];
+    state.activeArtLayerId = layer.id;
+
+    // Create a default Outline toolpath targeting this art layer
+    const toolpath = makeToolpath("layer 1 (outline)", "outline", layer.id);
+    state.toolpaths = [toolpath];
+    state.activeToolpathId = toolpath.id;
 }
 
-export function activeLayer() {
-    return state.layers.find(l => l.id === state.activeLayerId) || null;
+export function activeArtLayer() {
+    return state.artLayers.find(l => l.id === state.activeArtLayerId) || null;
+}
+
+export function activeToolpath() {
+    return state.toolpaths.find(tp => tp.id === state.activeToolpathId) || null;
 }
 
 export function findShape(sid) {
-    for (const l of state.layers) {
+    for (const l of state.artLayers) {
         const s = l.shapes.find(s => s.id === sid);
         if (s) return s;
     }

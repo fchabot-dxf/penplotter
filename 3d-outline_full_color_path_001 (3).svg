@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="164" height="158" viewBox="0 0 164 158">
+  <defs>
+    <linearGradient id="gradient_saved_1_seg_undefined_left_red_to_black" x1="131.67" y1="55.28" x2="96.73" y2="83.33" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#ec1f27"/><stop offset="100%" stop-color="#090700"/></linearGradient>
+    <linearGradient id="gradient_saved_1_seg_undefined_right_blue_to_yellow" x1="131.67" y1="55.28" x2="96.73" y2="83.33" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1034A6"/><stop offset="100%" stop-color="#f5c800"/></linearGradient>
+    <linearGradient id="gradient_saved_1_seg_undefined_left_black_to_black" x1="96.73" y1="83.33" x2="72.34" y2="83.74" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#090700"/><stop offset="100%" stop-color="#090700"/></linearGradient>
+    <linearGradient id="gradient_saved_1_seg_undefined_right_yellow_to_yellow" x1="96.73" y1="83.33" x2="72.34" y2="83.74" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#f5c800"/><stop offset="100%" stop-color="#f5c800"/></linearGradient>
+    <linearGradient id="gradient_saved_1_seg_undefined_left_black_to_blue" x1="72.34" y1="83.74" x2="30" y2="31.28" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#090700"/><stop offset="100%" stop-color="#1034A6"/></linearGradient>
+    <linearGradient id="gradient_saved_1_seg_undefined_right_yellow_to_red" x1="72.34" y1="83.74" x2="30" y2="31.28" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#f5c800"/><stop offset="100%" stop-color="#ec1f27"/></linearGradient>
+  </defs>
+  <g id="Ribbon_Mesh">
+    <g id="Path_0">
+      <g id="Seg_undefined">
+        <g id="Left_red">
+          <path id="ribbon_saved_0_seg_undefined_left_red" d="M 83.67,31.28 L 88.02,24 L 101.09,76.05 L 96.73,83.33 Z" fill="#ec1f27" stroke="none"/>
+          <path id="ribbon_saved_0_seg_undefined_left_red" d="M 96.73,83.33 L 102.62,88.04 L 101.52,133.42 L 95.67,127.28 Z" fill="#ec1f27" stroke="none"/>
+        </g>
+        <g id="Right_blue">
+          <path id="ribbon_saved_0_seg_undefined_right_blue" d="M 83.67,31.28 L 76.39,26.92 L 89.45,78.98 L 96.73,83.33 Z" fill="#1034A6" stroke="none"/>
+          <path id="ribbon_saved_0_seg_undefined_right_blue" d="M 96.73,83.33 L 90.54,91.08 L 89.52,133.13 L 95.67,127.28 Z" fill="#1034A6" stroke="none"/>
+        </g>
+      </g>
+      <g id="Cap_1">
+        <path id="ribbon_saved_0_cap_1_yellow" d="M 88.02,24 L 76.39,26.92 L 83.67,31.28 Z" fill="#f5c800" stroke="none"/>
+      </g>
+      <g id="Cap_2">
+        <path id="ribbon_saved_0_cap_2_black" d="M 89.52,133.13 L 101.52,133.42 L 95.67,127.28 Z" fill="#090700" stroke="none"/>
+      </g>
+    </g>
+    <g id="Path_1">
+      <g id="Seg_undefined">
+        <g id="Left_red">
+          <path id="ribbon_saved_1_seg_undefined_left_red" d="M 131.67,55.28 L 139.72,52.6 C 129.31,73.41 114.94,84.94 102.62,88.04 L 96.73,83.33 C 111.53,79.61 124.48,69.65 131.67,55.28 Z" fill="url(#gradient_saved_1_seg_undefined_left_red_to_black)" stroke="none"/>
+        </g>
+        <g id="Right_blue">
+          <path id="ribbon_saved_1_seg_undefined_right_blue" d="M 131.67,55.28 L 128.98,47.23 C 120.13,64.94 108.65,74.15 101.09,76.05 L 96.73,83.33 C 111.53,79.61 124.48,69.65 131.67,55.28 Z" fill="url(#gradient_saved_1_seg_undefined_right_blue_to_yellow)" stroke="none"/>
+        </g>
+        <g id="Left_black">
+          <path id="ribbon_saved_1_seg_undefined_left_black" d="M 96.73,83.33 L 90.54,91.08 C 89.33,91.38 80,91.53 71.01,89.59 L 72.34,83.74 C 80.6,85.52 88.92,85.3 96.73,83.33 Z" fill="url(#gradient_saved_1_seg_undefined_left_black_to_black)" stroke="none"/>
+          <path id="ribbon_saved_1_seg_undefined_left_black" d="M 72.34,83.74 L 71.01,89.59 C 43.34,83.07 24,58.63 24,25.28 L 30,31.28 C 30,56.17 47.11,77.79 72.34,83.74 Z" fill="url(#gradient_saved_1_seg_undefined_left_black_to_blue)" stroke="none"/>
+        </g>
+        <g id="Right_yellow">
+          <path id="ribbon_saved_1_seg_undefined_right_yellow" d="M 96.73,83.33 L 89.45,78.98 C 88.19,79.29 80.73,79.41 73.66,77.88 L 72.34,83.74 C 80.6,85.52 88.92,85.3 96.73,83.33 Z" fill="url(#gradient_saved_1_seg_undefined_right_yellow_to_yellow)" stroke="none"/>
+          <path id="ribbon_saved_1_seg_undefined_right_yellow" d="M 72.34,83.74 L 73.66,77.88 C 51.45,72.65 36,53.13 36,25.28 L 30,31.28 C 30,56.17 47.11,77.79 72.34,83.74 Z" fill="url(#gradient_saved_1_seg_undefined_right_yellow_to_red)" stroke="none"/>
+        </g>
+      </g>
+      <g id="Cap_1">
+        <path id="ribbon_saved_1_cap_1_yellow" d="M 139.72,52.6 L 128.98,47.23 L 131.67,55.28 Z" fill="#f5c800" stroke="none"/>
+      </g>
+      <g id="Cap_2">
+        <path id="ribbon_saved_1_cap_2_yellow" d="M 36,25.28 L 24,25.28 L 30,31.28 Z" fill="#f5c800" stroke="none"/>
+      </g>
+    </g>
+  </g>
+</svg>

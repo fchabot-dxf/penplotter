@@ -13,16 +13,12 @@ export const dropOverlay = $("#dropOverlay");
 export const SVG_NS = "http://www.w3.org/2000/svg";
 export const INK_NS = "http://www.inkscape.org/namespaces/inkscape";
 
-// API base URL. When the app is loaded directly from the Flask server
-// (port 5005) it's same-origin and we use a relative path. When loaded
-// from a dev server (e.g. VS Code Live Server on :5500), we fall back to
-// the Flask backend on :5005 — flask-cors is enabled so cross-origin
-// works. Override by setting window.__apiBase before this module loads.
-export const API_BASE = (function () {
-    if (typeof window !== "undefined" && window.__apiBase) return window.__apiBase;
-    const sameOrigin = location.port === "5005" || location.port === "";
-    return sameOrigin ? "" : "http://127.0.0.1:5005";
-})();
+// Cloud Worker base URL — only used for save/load of palettes + projects.
+// Set by the user via the Cloud settings dialog and persisted to
+// localStorage. Empty string disables cloud features.
+export const API_BASE = (typeof window !== "undefined")
+    ? (window.__apiBase || localStorage.getItem("penplotter.cloudUrl") || "")
+    : "";
 export const api = (path) => API_BASE + path;
 
 let toastTimer = null;

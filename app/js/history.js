@@ -45,16 +45,20 @@ export function redo() {
 
 function serialize() {
     return JSON.stringify({
-        layers: state.layers,
-        activeLayerId: state.activeLayerId,
+        artLayers: state.artLayers,
+        activeArtLayerId: state.activeArtLayerId,
+        toolpaths: state.toolpaths,
+        activeToolpathId: state.activeToolpathId,
         doc: { ...state.doc },
     });
 }
 
 function restore(snap) {
     const s = JSON.parse(snap);
-    state.layers = s.layers;
-    state.activeLayerId = s.activeLayerId;
+    state.artLayers = s.artLayers;
+    state.activeArtLayerId = s.activeArtLayerId;
+    state.toolpaths = s.toolpaths || [];
+    state.activeToolpathId = s.activeToolpathId || null;
     state.doc = s.doc;
     state.selectedShapeIds = new Set();
     state.interaction = null;

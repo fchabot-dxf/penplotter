@@ -1,7 +1,8 @@
-// Right panel: document size + plotter settings. Loads defaults from the server.
+// Right panel: document size + plotter settings.
+// Defaults come from state.js — no server round-trip needed anymore.
 
 import { state } from "./state.js";
-import { $, api } from "./dom.js";
+import { $ } from "./dom.js";
 import { fitViewport } from "./viewport.js";
 import { render } from "./render.js";
 
@@ -27,18 +28,13 @@ export function installSettingsPanel() {
     }
 }
 
+/** Sync the field inputs with whatever defaults state.settings carries
+ *  (pure UI hydration; no async, no server). */
 export async function loadDefaults() {
-    try {
-        const r = await fetch(api("/api/defaults"));
-        if (!r.ok) return;
-        const d = await r.json();
-        Object.assign(state.settings, d);
-        $("#penUpZ").value   = d.pen_up_z;
-        $("#penDownZ").value = d.pen_down_z;
-        $("#drawFeed").value = d.draw_feed;
-        $("#zFeed").value    = d.z_feed;
-        $("#tol").value      = d.tolerance_mm;
-    } catch {
-        // Defaults already set in state.js — fine to start without the server.
-    }
+    const s = state.settings;
+    $("#penUpZ").value   = s.pen_up_z;
+    $("#penDownZ").value = s.pen_down_z;
+    $("#drawFeed").value = s.draw_feed;
+    $("#zFeed").value    = s.z_feed;
+    $("#tol").value      = s.tolerance_mm;
 }

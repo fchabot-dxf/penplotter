@@ -1,11 +1,13 @@
 // Mouse handlers on the canvas. Dispatches by current tool.
 // All shape geometry changes happen here; commits push onto the active layer.
 
-import { state, uid, activeLayer, findShape } from "./state.js";
+import { state, uid, activeArtLayer, findShape } from "./state.js";
 import { canvas, coordsEl, SVG_NS } from "./dom.js";
 import { screenToSvg, applyViewport } from "./viewport.js";
 import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, combinedBounds, shapeBounds } from "./shapes.js";
 import { gatherSnapCandidates, shapeVertices, findSnapDelta } from "./snapping.js";
+import { resolveToolpathShapes } from "./preview.js";
+import { syncTargetEditingSelection } from "./toolpath-layers-panel.js";
 
 // Snap threshold is in SCREEN pixels — converted to mm per drag frame
 // using the current viewport scale. That way a snap engages at a constant
@@ -15,6 +17,10 @@ const SNAP_THRESHOLD_PX = 10;
 import { render } from "./render.js";
 import { showPreview, removePreview, cancelInteraction } from "./tools.js";
 import { snapshot } from "./history.js";
+
+function isSvgMode() {
+    return state.preview.showSvg;
+}
 
 export function installCanvasHandlers() {
     canvas.addEventListener("mousedown", onDown);
@@ -39,11 +45,25 @@ function onDown(e) {
 
     const p = screenToSvg(e.clientX, e.clientY);
 
+    // Toolpath / simulation mode: even when SVG view is off, the Select
+    // tool still needs to work — it picks a toolpath from the overlay
+    // via data-toolpath-id. Run startSelect, which has the showToolpath
+    // branch built in.
+    if (state.preview.showToolpath && state.tool === "select") {
+        return startSelect(e, p);
+    }
+
+    if (!isSvgMode()) {
+        // Other tools (draw, rotate, scale) are SVG-mode only — the
+        // canvas is preview-only in pure toolpath/simulation views.
+        return;
+    }
+
     if (state.tool === "select") return startSelect(e, p);
     if (state.tool === "rotate") return startRotate(e, p);
     if (state.tool === "scale")  return startScale(e, p);
 
-    const layer = activeLayer();
+    const layer = activeArtLayer();
     if (!layer) return;
 
     if (state.tool === "polyline") return startOrExtendPolyline(p);
@@ -59,8 +79,15 @@ function onMove(e) {
     if (!it) return;
 
     if (it.kind === "pan") {
-        state.viewport.panX = it.originPanX + (e.clientX - it.startX);
-        state.viewport.panY = it.originPanY + (e.clientY - it.startY);
+        // panX/panY are the viewBox top-left in user-space (mm) since
+        // we switched to viewBox-based zoom. To follow the cursor we
+        // subtract the cursor screen delta converted to user-space:
+        // dragging right reveals more of the doc on the left, which
+        // means the viewBox slides left.
+        const dxMm = (e.clientX - it.startX) / state.viewport.scale;
+        const dyMm = (e.clientY - it.startY) / state.viewport.scale;
+        state.viewport.panX = it.originPanX - dxMm;
+        state.viewport.panY = it.originPanY - dyMm;
         applyViewport();
         return;
     }
@@ -99,22 +126,19 @@ function onMove(e) {
         return;
     }
     if (it.kind === "rotate") {
+        if (it.released) return; // post-mouseup edits go through the HUD
         const delta = Math.atan2(p.y - it.center[1], p.x - it.center[0]) - it.startAngle;
-        for (let i = 0; i < it.shapes.length; i++) {
-            Object.assign(it.shapes[i], deepCopyShape(it.originals[i]));
-            rotateShape(it.shapes[i], delta, it.center[0], it.center[1]);
-        }
-        render();
+        it.value = delta * 180 / Math.PI;
+        applyRotate(it);
+        updateHud(it);
         return;
     }
     if (it.kind === "scale") {
+        if (it.released) return;
         const d = Math.hypot(p.x - it.center[0], p.y - it.center[1]);
-        const factor = Math.max(0.05, d / it.startDist);
-        for (let i = 0; i < it.shapes.length; i++) {
-            Object.assign(it.shapes[i], deepCopyShape(it.originals[i]));
-            scaleShape(it.shapes[i], factor, it.center[0], it.center[1]);
-        }
-        render();
+        it.value = Math.max(0.05, d / it.startDist);
+        applyScale(it);
+        updateHud(it);
         return;
     }
     if (it.kind === "polyline") {
@@ -138,8 +162,38 @@ function onUp() {
     if (it.kind === "drag")     { state.interaction = null; return; }
     if (it.kind === "draw")     { commitDraw(); return; }
     if (it.kind === "freehand") { commitFreehand(); return; }
-    if (it.kind === "rotate" || it.kind === "scale") { state.interaction = null; return; }
-    if (it.kind === "marquee")  { state.interaction = null; render(); return; }
+    if (it.kind === "rotate" || it.kind === "scale") {
+        // Don't clear yet — leave the HUD up so the user can fine-tune
+        // the value by typing, then commit with OK or revert with Cancel.
+        it.released = true;
+        return;
+    }
+    if (it.kind === "marquee") {
+        // No drag = plain click on empty space → clear selection (unless
+        // shift was held, which would keep the prior selection).
+        // In toolpath mode we also clear the shape selection so the
+        // user can wipe a stale shape-pick made before switching modes
+        // (otherwise + Outline / + Fill would silently use it).
+        const moved = (it.x !== it.startX) || (it.y !== it.startY);
+        if (!moved && !it.additive) {
+            if (it.scope === "toolpath") {
+                state.selectedToolpathIds = new Set();
+                state.activeToolpathId = null;
+                state.selectedShapeIds = new Set();
+            } else {
+                state.selectedShapeIds = new Set();
+            }
+        }
+        // Marquee changes drove selectedShapeIds — push that into the
+        // toolpath being target-edited, if any.
+        if (it.scope !== "toolpath") syncTargetEditingSelection();
+        state.interaction = null;
+        render();
+        if (it.scope === "toolpath") {
+            import("./active-layer-panel.js").then(m => m.renderActiveLayerPanel());
+        }
+        return;
+    }
     // polyline waits for Enter / dblclick
 }
 
@@ -149,8 +203,69 @@ function onDblClick() {
 
 // -------- select --------
 function startSelect(e, p) {
+    // In toolpath mode, clicking a polyline activates its toolpath
+    // instead of selecting an underlying shape. Shift-click toggles
+    // multi-selection; empty-area drag starts a box-select that picks
+    // every toolpath whose target geometry falls in the box.
+    if (state.preview.showToolpath) {
+        let n = e.target;
+        while (n && n !== canvas) {
+            const tpid = n.dataset && n.dataset.toolpathId;
+            if (tpid) {
+                if (e.shiftKey) {
+                    // Toggle: shift-click on already-selected removes,
+                    // otherwise adds.
+                    if (state.selectedToolpathIds.has(tpid)) {
+                        state.selectedToolpathIds.delete(tpid);
+                    } else {
+                        state.selectedToolpathIds.add(tpid);
+                    }
+                } else {
+                    state.selectedToolpathIds = new Set([tpid]);
+                }
+                state.activeToolpathId = tpid;
+                render();
+                import("./active-layer-panel.js").then(m => m.renderActiveLayerPanel());
+                return;
+            }
+            n = n.parentNode;
+        }
+        // Empty area in toolpath mode → rubber-band marquee that picks
+        // toolpaths (not shapes). Shift keeps the current selection.
+        state.interaction = {
+            kind: "marquee",
+            scope: "toolpath",
+            startX: p.x, startY: p.y, x: p.x, y: p.y,
+            additive: e.shiftKey,
+            initialSelection: new Set(state.selectedToolpathIds),
+        };
+        render();
+        return;
+    }
     const sid = e.target.dataset && e.target.dataset.shapeId;
     if (sid) {
+        // In target-editing mode, clicking a shape toggles its
+        // membership in the target rather than starting a drag. Shift
+        // toggles individually; plain click toggles too (since the
+        // typical action is to build the target up by clicking around).
+        if (state.targetEditingToolpathId) {
+            if (state.selectedShapeIds.has(sid) && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+                state.selectedShapeIds.delete(sid);
+            } else {
+                if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    if (state.selectedShapeIds.has(sid)) {
+                        state.selectedShapeIds.delete(sid);
+                    } else {
+                        state.selectedShapeIds.add(sid);
+                    }
+                } else {
+                    state.selectedShapeIds.add(sid);
+                }
+            }
+            syncTargetEditingSelection();
+            render();
+            return;
+        }
         if (!e.shiftKey) state.selectedShapeIds.clear();
         state.selectedShapeIds.add(sid);
         snapshot(); // about to move shapes
@@ -187,6 +302,35 @@ function updateMarquee(it) {
     const isWindow = it.x >= it.startX;
     it.mode = isWindow ? "window" : "crossing";
 
+    // Toolpath-scope marquee — pick toolpaths whose target geometry
+    // falls in (window) / touches (crossing) the box. Bounds come from
+    // the toolpath's resolved target shapes so the selection matches
+    // what the user actually sees in the preview.
+    if (it.scope === "toolpath") {
+        const next = new Set(it.additive ? it.initialSelection : []);
+        for (const tp of state.toolpaths) {
+            if (!tp.visible) continue;
+            const shapes = resolveToolpathShapes(tp);
+            if (!shapes.length) continue;
+            const b = combinedBounds(shapes);
+            const fullyInside = b.minX >= minX && b.maxX <= maxX
+                             && b.minY >= minY && b.maxY <= maxY;
+            const touches = !(b.maxX < minX || b.minX > maxX
+                           || b.maxY < minY || b.minY > maxY);
+            const hit = isWindow ? fullyInside : touches;
+            if (hit) next.add(tp.id);
+        }
+        state.selectedToolpathIds = next;
+        // Keep activeToolpathId synced — primary stays valid if still
+        // selected; otherwise fall back to the first in the new set.
+        if (next.size && !next.has(state.activeToolpathId)) {
+            state.activeToolpathId = [...next][0];
+        } else if (!next.size) {
+            state.activeToolpathId = null;
+        }
+        return;
+    }
+
     const next = new Set(it.additive ? it.initialSelection : []);
     for (const layer of state.layers) {
         if (!layer.visible) continue;
@@ -203,6 +347,89 @@ function updateMarquee(it) {
     state.selectedShapeIds = next;
 }
 
+// -------- transform HUD (rotate / scale popup) --------
+// Shown when a rotate or scale interaction starts. While dragging,
+// updates the displayed value live. After mouseup, the user can type an
+// exact value (Enter or OK applies it; Cancel reverts to originals).
+
+function showHud(it) {
+    const hud = document.getElementById("transformHud");
+    if (!hud) return;
+    document.getElementById("transformHudLabel").textContent = it.kind === "rotate" ? "angle" : "scale";
+    document.getElementById("transformHudUnit").textContent = it.kind === "rotate" ? "°" : "×";
+    const input = document.getElementById("transformHudInput");
+    input.step = it.kind === "rotate" ? "0.1" : "0.01";
+    input.value = (it.kind === "rotate" ? 0 : 1).toFixed(it.kind === "rotate" ? 1 : 2);
+    hud.hidden = false;
+}
+
+function updateHud(it) {
+    const input = document.getElementById("transformHudInput");
+    if (!input) return;
+    input.value = (it.kind === "rotate"
+        ? it.value.toFixed(1)
+        : it.value.toFixed(3));
+}
+
+function hideHud() {
+    const hud = document.getElementById("transformHud");
+    if (hud) hud.hidden = true;
+}
+
+function applyRotate(it) {
+    const radians = it.value * Math.PI / 180;
+    for (let i = 0; i < it.shapes.length; i++) {
+        Object.assign(it.shapes[i], deepCopyShape(it.originals[i]));
+        rotateShape(it.shapes[i], radians, it.center[0], it.center[1]);
+    }
+    render();
+}
+
+function applyScale(it) {
+    const factor = Math.max(0.001, it.value);
+    for (let i = 0; i < it.shapes.length; i++) {
+        Object.assign(it.shapes[i], deepCopyShape(it.originals[i]));
+        scaleShape(it.shapes[i], factor, it.center[0], it.center[1]);
+    }
+    render();
+}
+
+export function installTransformHud() {
+    const input = document.getElementById("transformHudInput");
+    const ok    = document.getElementById("transformHudOk");
+    const cncl  = document.getElementById("transformHudCancel");
+    if (!input || !ok || !cncl) return;
+
+    input.oninput = () => {
+        const it = state.interaction;
+        if (!it || (it.kind !== "rotate" && it.kind !== "scale")) return;
+        const v = parseFloat(input.value);
+        if (Number.isNaN(v)) return;
+        it.value = v;
+        if (it.kind === "rotate") applyRotate(it);
+        else applyScale(it);
+    };
+    input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); ok.click(); } };
+
+    ok.onclick = () => {
+        // Current shape state is the committed result — just dismiss.
+        state.interaction = null;
+        hideHud();
+        render();
+    };
+    cncl.onclick = () => {
+        const it = state.interaction;
+        if (it && (it.kind === "rotate" || it.kind === "scale")) {
+            for (let i = 0; i < it.shapes.length; i++) {
+                Object.assign(it.shapes[i], deepCopyShape(it.originals[i]));
+            }
+        }
+        state.interaction = null;
+        hideHud();
+        render();
+    };
+}
+
 // -------- rotate / scale (operate on the entire selection) --------
 function startRotate(e, p) {
     const targets = prepareTransformTargets(e);
@@ -215,7 +442,10 @@ function startRotate(e, p) {
         center,
         startAngle: Math.atan2(p.y - center[1], p.x - center[0]),
         originals: shapes.map(deepCopyShape),
+        value: 0,
+        released: false,
     };
+    showHud(state.interaction);
     render();
 }
 
@@ -230,7 +460,10 @@ function startScale(e, p) {
         center,
         startDist: Math.max(0.5, Math.hypot(p.x - center[0], p.y - center[1])),
         originals: shapes.map(deepCopyShape),
+        value: 1,
+        released: false,
     };
+    showHud(state.interaction);
     render();
 }
 
@@ -239,23 +472,14 @@ function startScale(e, p) {
  *  the group centroid. If they clicked an unselected shape, that one
  *  becomes the new (single) selection. */
 function prepareTransformTargets(e) {
-    const sid = e.target.dataset && e.target.dataset.shapeId;
-    const clickedSelected = sid && state.selectedShapeIds.has(sid);
-
-    if (clickedSelected && state.selectedShapeIds.size > 0) {
-        const shapes = [...state.selectedShapeIds].map(findShape).filter(Boolean);
-        if (!shapes.length) return null;
-        const b = combinedBounds(shapes);
-        return { shapes, center: [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2] };
-    }
-    if (sid) {
-        const shape = findShape(sid);
-        if (!shape) return null;
-        state.selectedShapeIds.clear();
-        state.selectedShapeIds.add(sid);
-        return { shapes: [shape], center: shapeCenter(shape) };
-    }
-    return null;
+    // Rotate/scale always operate on the current selection. Drag anywhere
+    // on the canvas — the click target doesn't matter. If nothing's
+    // selected, the tool does nothing (use the Select tool first).
+    if (state.selectedShapeIds.size === 0) return null;
+    const shapes = [...state.selectedShapeIds].map(findShape).filter(Boolean);
+    if (!shapes.length) return null;
+    const b = combinedBounds(shapes);
+    return { shapes, center: [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2] };
 }
 
 // -------- draw (line/rect/ellipse) --------
@@ -265,7 +489,7 @@ function startDraw(p) {
 
 function commitDraw() {
     const it = state.interaction;
-    const layer = activeLayer();
+    const layer = activeArtLayer();
     if (!layer) { state.interaction = null; return; }
     const moved = Math.hypot(it.x - it.startX, it.y - it.startY) > 0.5;
     if (!moved) { cancelInteraction(); return; }
@@ -325,7 +549,7 @@ function startOrExtendPolyline(p) {
 export function commitPolyline() {
     const it = state.interaction;
     if (!it || it.points.length < 3) { cancelInteraction(); return; }
-    const layer = activeLayer();
+    const layer = activeArtLayer();
     if (!layer) { cancelInteraction(); return; }
     snapshot();
     const pts = it.points.slice(0, -1); // drop live preview vertex
@@ -349,7 +573,7 @@ function startFreehand(p) {
 function commitFreehand() {
     const it = state.interaction;
     if (!it || it.points.length < 2) { cancelInteraction(); return; }
-    const layer = activeLayer();
+    const layer = activeArtLayer();
     if (!layer) { cancelInteraction(); return; }
     snapshot();
     const d = "M " + it.points.map(p => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" L ");

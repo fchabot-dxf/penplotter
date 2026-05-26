@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="123" height="135" viewBox="0 0 123 135">
+  <g id="Ribbon_Mesh">
+    <g id="Path_0">
+      <g id="Seg_undefined">
+        <g id="Left_red">
+          <path id="ribbon_saved_0_seg_undefined_left_red" d="M 56.49,56.49 L 62.49,62.49 L 62.49,98.49 L 56.49,104.49 Z" fill="#ec1f27" stroke="none"/>
+        </g>
+        <g id="Right_blue">
+          <path id="ribbon_saved_0_seg_undefined_right_blue" d="M 56.49,56.49 L 50.49,58.97 L 50.49,110.49 L 56.49,104.49 Z" fill="#1034A6" stroke="none"/>
+        </g>
+        <g id="Left_yellow">
+          <path id="ribbon_saved_0_seg_undefined_left_yellow" d="M 56.49,104.49 L 62.49,98.49 L 86.49,98.49 L 92.49,104.49 Z" fill="#f5c800" stroke="none"/>
+        </g>
+        <g id="Right_black">
+          <path id="ribbon_saved_0_seg_undefined_right_black" d="M 56.49,104.49 L 50.49,110.49 L 98.49,110.49 L 92.49,104.49 Z" fill="#090700" stroke="none"/>
+        </g>
+        <g id="Left_blue">
+          <path id="ribbon_saved_0_seg_undefined_left_blue" d="M 92.49,104.49 L 86.49,98.49 L 86.49,62.49 L 92.49,56.49 Z" fill="#1034A6" stroke="none"/>
+        </g>
+        <g id="Right_red">
+          <path id="ribbon_saved_0_seg_undefined_right_red" d="M 92.49,104.49 L 98.49,110.49 L 98.49,50.49 L 92.49,56.49 Z" fill="#ec1f27" stroke="none"/>
+        </g>
+        <g id="Left_black">
+          <path id="ribbon_saved_0_seg_undefined_left_black" d="M 92.49,56.49 L 86.49,62.49 L 62.49,62.49 L 56.49,56.49 Z" fill="#090700" stroke="none"/>
+          <g id="To_blue">
+            <path id="ribbon_saved_0_seg_undefined_left_black_to_blue" d="M 56.49,56.49 L 50.49,58.97 L 24,32.49 L 32.49,32.49 Z" fill="#1034A6" stroke="none"/>
+          </g>
+        </g>
+        <g id="Right_yellow">
+          <path id="ribbon_saved_0_seg_undefined_right_yellow" d="M 92.49,56.49 L 98.49,50.49 L 58.97,50.49 L 56.49,56.49 Z" fill="#f5c800" stroke="none"/>
+          <g id="To_red">
+            <path id="ribbon_saved_0_seg_undefined_right_yellow_to_red" d="M 56.49,56.49 L 58.97,50.49 L 32.49,24 L 32.49,32.49 Z" fill="#ec1f27" stroke="none"/>
+          </g>
+        </g>
+      </g>
+      <g id="Cap_2">
+        <g id="Blue_to">
+          <path id="ribbon_saved_0_cap_2_blue_to_yellow" d="M 32.49,24 L 24,32.49 L 32.49,32.49 Z" fill="#837e53" stroke="none"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

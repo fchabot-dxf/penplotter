@@ -6,6 +6,7 @@ import { setTool, cancelInteraction } from "./tools.js";
 import { render } from "./render.js";
 import { commitPolyline } from "./interaction.js";
 import { snapshot } from "./history.js";
+import { exitTargetEditing } from "./toolpath-layers-panel.js";
 
 const TOOL_KEYS = {
     v: "select", t: "rotate", s: "scale",
@@ -26,7 +27,20 @@ function onKeyDown(e) {
         e.preventDefault();
         return;
     }
-    if (e.key === "Escape") return cancelInteraction();
+    if (e.key === "Escape") {
+        if (state.targetEditingToolpathId) { exitTargetEditing(); return; }
+        if (state.interaction) return cancelInteraction();
+        // Nothing in-flight — Esc becomes a "deselect everything"
+        // shortcut. Works in any mode, including toolpath mode where
+        // there's no empty-canvas to click on near the panel.
+        if (state.selectedShapeIds.size || state.selectedToolpathIds.size) {
+            state.selectedShapeIds = new Set();
+            state.selectedToolpathIds = new Set();
+            state.activeToolpathId = null;
+            render();
+        }
+        return;
+    }
     if (e.key === "Enter") {
         if (state.interaction && state.interaction.kind === "polyline") commitPolyline();
         return;

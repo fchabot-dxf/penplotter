@@ -2,3 +2,9 @@
 out/
 __pycache__/
 *.pyc
+.env
+.wrangler/
+node_modules/
+# Local cloud worker config — contains the deployed worker URL + API key.
+# Use cloud-config.local.example.js as the template on a fresh clone.
+app/js/cloud-config.local.js

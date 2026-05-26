@@ -1,0 +1,15 @@
+name = "penplotter-cloud"
+main = "worker.js"
+compatibility_date = "2025-05-01"
+
+# KV namespace for palettes + projects. KV is on by default for every
+# Workers account (no R2-style enable step). Namespace already exists;
+# the id below points at it. Worker code references env.KV.
+[[kv_namespaces]]
+binding = "KV"
+id = "db051a143b2744a2b69eda07b609e48e"
+
+# After deploy, set the auth key once:
+#   wrangler secret put API_KEY
+# Type any random string. Use the same string in the app's source
+# (app/js/cloud.js).

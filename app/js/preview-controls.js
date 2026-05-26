@@ -1,25 +1,49 @@
-// SVG / Toolpath toggle buttons at the top-left of the canvas.
+// SVG / Toolpath toggle buttons at the top-left of the canvas, plus the
+// "simulate pen widths" checkbox in the Toolpath Operations panel.
+//
+// Two preview modes — SVG or Toolpath — mutually exclusive. Clicking the
+// already-active one is a no-op (can't blank the canvas). When Toolpath
+// mode is active, simulatePens decides whether strokes render at their
+// pen width (formerly "Simulation" mode) or as thin diagnostic lines.
 
 import { state } from "./state.js";
 import { $ } from "./dom.js";
 import { render } from "./render.js";
+import { cancelInteraction } from "./tools.js";
 
-// The three preview modes are mutually exclusive — exactly one is on at
-// any time. Clicking the already-active one is a no-op (you can't turn
-// off all views, that'd leave the canvas blank).
-const KEYS = ["showSvg", "showToolpath", "showSimulation"];
+const KEYS = ["showSvg", "showToolpath"];
 
 export function installPreviewToggles() {
     ensureExactlyOne();
     syncToggleUI();
     bind("#toggleSvg", "showSvg");
     bind("#toggleToolpath", "showToolpath");
-    bind("#toggleSimulation", "showSimulation");
+
+    // "Pen widths" floating toggle next to SVG / Toolpath. Behaves
+    // like the other view-toggle buttons (.on = active). Clicking it
+    // also switches into Toolpath view if you're still in SVG view —
+    // simulated pen widths are a Toolpath-mode concern, so it would
+    // do nothing visible from SVG.
+    const sim = $("#toggleSimPens");
+    if (sim) {
+        sim.classList.toggle("on", !!state.preview.simulatePens);
+        sim.onclick = () => {
+            state.preview.simulatePens = !state.preview.simulatePens;
+            sim.classList.toggle("on", state.preview.simulatePens);
+            if (state.preview.simulatePens && !state.preview.showToolpath) {
+                cancelInteraction();
+                for (const k of KEYS) state.preview[k] = (k === "showToolpath");
+                syncToggleUI();
+            }
+            render();
+        };
+    }
 }
 
 function bind(selector, key) {
     $(selector).onclick = () => {
         if (state.preview[key]) return; // already active
+        cancelInteraction();
         for (const k of KEYS) state.preview[k] = (k === key);
         syncToggleUI();
         render();
@@ -40,13 +64,5 @@ function ensureExactlyOne() {
 function syncToggleUI() {
     $("#toggleSvg").classList.toggle("on", state.preview.showSvg);
     $("#toggleToolpath").classList.toggle("on", state.preview.showToolpath);
-    $("#toggleSimulation").classList.toggle("on", state.preview.showSimulation);
-    // Propagate the active mode to <body> so CSS can contextualize the
-    // sidebars: svg-only sections (Tools, Style) hide in toolpath/sim;
-    // plot-only sections (Toolpath Layers, Active Layer plot settings,
-    // Plotter Settings) hide in svg.
-    const mode = state.preview.showSvg ? "svg"
-              : state.preview.showSimulation ? "simulation"
-              : "toolpath";
-    document.body.dataset.mode = mode;
+    document.body.dataset.mode = state.preview.showSvg ? "svg" : "toolpath";
 }

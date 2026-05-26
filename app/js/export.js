@@ -1,41 +1,33 @@
-// Export: serialize state to an SVG string, POST to /api/plot, download zip.
+// Export: run the in-browser vpype pipeline on every exportable toolpath,
+// render G-code per toolpath, package as a ZIP, and trigger a download.
+// No backend needed — everything happens client-side via app/js/vpype/.
 
 import { state } from "./state.js";
-import { $, toast, api } from "./dom.js";
-import { shapeToSvgString } from "./shapes.js";
+import { $, toast } from "./dom.js";
 import { expandLayerWithFill } from "./fill/index.js";
 import { expandLayerOutline } from "./outline/index.js";
+import { toolpathToGcode, buildZip } from "./vpype/index.js";
 
 export function installExportButton() {
     $("#exportBtn").onclick = onExportClick;
 }
 
 async function onExportClick() {
-    const btn = $("#exportBtn");
-    if (state.layers.every(l => l.shapes.length === 0)) {
-        return toast("Nothing to plot — draw or import something first.", true);
+    if (state.toolpaths.every(tp => !tp.export)) {
+        return toast("No active toolpaths selected for export — check at least one.", true);
     }
+
+    const btn = $("#exportBtn");
     btn.disabled = true;
     btn.textContent = "Exporting…";
     try {
-        const svg = buildExportSvg();
-        const res = await fetch(api("/api/plot"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ svg, settings: state.settings }),
-        });
-        if (!res.ok) {
-            let msg = `Export failed (${res.status})`;
-            try {
-                const err = await res.json();
-                msg = err.error || msg;
-                if (err.stderr) console.error("vpype stderr:", err.stderr);
-            } catch {}
-            throw new Error(msg);
+        const entries = buildGcodeEntries();
+        if (entries.length === 0) {
+            return toast("Nothing to plot — add vectors to your art layers first.", true);
         }
-        const blob = await res.blob();
-        downloadBlob(blob, "plotter_gcode.zip");
-        toast("Exported plotter_gcode.zip");
+        const zip = buildZip(entries);
+        downloadBlob(zip, "plotter_gcode.zip");
+        toast(`Exported ${entries.length} G-code file${entries.length === 1 ? "" : "s"} → plotter_gcode.zip`);
     } catch (e) {
         toast(e.message, true);
         console.error(e);
@@ -45,33 +37,66 @@ async function onExportClick() {
     }
 }
 
-export function buildExportSvg() {
-    const lines = [];
-    lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
-    lines.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"`);
-    lines.push(`     width="${state.doc.w}mm" height="${state.doc.h}mm" viewBox="0 0 ${state.doc.w} ${state.doc.h}">`);
-    let layerIdx = 0;
-    for (const layer of state.layers) {
-        if (!layer.export || layer.shapes.length === 0) continue;
-        layerIdx++;
-        const safeName = (layer.name || `layer_${layerIdx}`).replace(/[^a-z0-9_-]/gi, "_");
-        // Outline style (dashed, jagged, multi-pass) — skipped entirely
-        // for fill-only layers (drawOutline=false) so e.g. a "red (fill)"
-        // layer outputs only the hatch lines, not the boundary outline.
-        const outlineShapes = layer.drawOutline === false
-            ? []
-            : expandLayerOutline(layer.shapes, layer.outline);
-        // Fill always uses the original shape list as boundary.
-        const filled = expandLayerWithFill({ ...layer, shapes: layer.shapes });
-        const fillOnly = filled.slice(layer.shapes.length);
-        const finalShapes = [...outlineShapes, ...fillOnly];
+/** Build one G-code file per exportable toolpath. Returns ZIP entries
+ *  ({ name, content }) ready to be passed to buildZip(). */
+function buildGcodeEntries() {
+    const entries = [];
+    let idx = 0;
+    for (const tp of state.toolpaths) {
+        if (!tp.export) continue;
+        const targetShapes = collectToolpathShapes(tp);
+        if (targetShapes.length === 0) continue;
+
+        const finalShapes = expandToolpathShapes(tp, targetShapes);
         if (finalShapes.length === 0) continue;
-        lines.push(`  <g inkscape:groupmode="layer" inkscape:label="${safeName}" id="layer_${layerIdx}" stroke="${layer.color}" fill="none" stroke-width="0.3">`);
-        for (const s of finalShapes) lines.push("    " + shapeToSvgString(s));
-        lines.push(`  </g>`);
+
+        idx++;
+        const safeName = (tp.name || `toolpath_${idx}`).replace(/[^a-z0-9_-]/gi, "_");
+        const gcode = toolpathToGcode(finalShapes, {
+            penUpZ:    state.settings.pen_up_z,
+            penDownZ:  state.settings.pen_down_z,
+            drawFeed:  state.settings.draw_feed,
+            zFeed:     state.settings.z_feed,
+            mergeTol:  0.05,
+            simplifyTol: state.settings.tolerance_mm || 0.1,
+            docH:      state.doc.h,
+            flipY:     true,
+            label:     tp.name,
+        });
+        entries.push({ name: `${idx}_${safeName}.gcode`, content: gcode });
     }
-    lines.push(`</svg>`);
-    return lines.join("\n");
+    return entries;
+}
+
+/** Apply outline/fill expansion (the same logic Render uses) so the
+ *  shapes fed to vpype already include dashed outlines, hatching, etc. */
+function expandToolpathShapes(tp, targetShapes) {
+    const outlineShapes = tp.type === "outline" && tp.drawOutline !== false
+        ? expandLayerOutline(targetShapes, tp.outline)
+        : [];
+    const filled = tp.type === "fill"
+        ? expandLayerWithFill({ ...tp, shapes: targetShapes })
+        : [];
+    const fillOnly = tp.type === "fill"
+        ? filled.slice(targetShapes.length)
+        : [];
+    return [...outlineShapes, ...fillOnly];
+}
+
+export function collectToolpathShapes(tp) {
+    if (tp.targetType === "layer") {
+        const layer = state.artLayers.find(l => l.id === tp.targetArtLayerId);
+        return layer ? layer.shapes : [];
+    }
+    const selectedIds = new Set(tp.targetShapeIds.length ? tp.targetShapeIds : state.selectedShapeIds);
+    if (selectedIds.size === 0) return [];
+    const out = [];
+    for (const layer of state.artLayers) {
+        for (const s of layer.shapes) {
+            if (selectedIds.has(s.id)) out.push(s);
+        }
+    }
+    return out;
 }
 
 function downloadBlob(blob, filename) {

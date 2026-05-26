@@ -7,6 +7,8 @@ import { findShape } from "./state.js";
 import { renderLayersPanel } from "./layers-panel.js";
 import { renderToolpathLayersPanel } from "./toolpath-layers-panel.js";
 import { renderStylePanel } from "./style-panel.js";
+import { renderPlotColorsPanel } from "./plot-colors-panel.js";
+import { renderActiveLayerPanel } from "./active-layer-panel.js";
 import { buildToolpathOverlay, buildSimulationOverlay, requestPreview } from "./preview.js";
 import { expandLayerWithFill } from "./fill/index.js";
 import { expandLayerOutline } from "./outline/index.js";
@@ -14,6 +16,7 @@ import { expandLayerOutline } from "./outline/index.js";
 export function render() {
     while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
 
+    canvas.appendChild(buildPaper());
     canvas.appendChild(buildGrid());
 
     // SVG artwork — always rendered so clicks still hit shapes for
@@ -21,7 +24,7 @@ export function render() {
     // / simulation modes they fade to a ghost layer that the overlay
     // sits on top of, but stays pickable.
     const svgOpacity = state.preview.showSvg ? 1 : 0.18;
-    for (const layer of state.layers) {
+    for (const layer of state.artLayers) {
         if (!layer.visible) continue;
         const g = document.createElementNS(SVG_NS, "g");
         g.setAttribute("data-layer-id", layer.id);
@@ -31,33 +34,35 @@ export function render() {
         g.setAttribute("opacity", svgOpacity);
         for (const shape of svgViewShapes(layer)) {
             const el = makeShapeElement(shape);
-            if (state.selectedShapeIds.has(shape.id)) el.classList.add("selected");
+            // Selection halo is rendered as a separate overlay over
+            // the artwork — the asset itself stays untouched.
             g.appendChild(el);
         }
         canvas.appendChild(g);
     }
 
-    // Server-side toolpath data is used by both toolpath + simulation views.
-    const needsPreview = state.preview.showToolpath || state.preview.showSimulation;
-    let stats = null;
-
-    if (state.preview.showSimulation) {
-        requestPreview();
-        canvas.appendChild(buildSimulationOverlay());
-    }
-
-    if (state.preview.showToolpath) {
-        requestPreview();
-        const r = buildToolpathOverlay();
-        canvas.appendChild(r.overlay);
-        stats = r.stats;
-    }
-
-    // Selection overlay — each selected shape rendered again as an
-    // unfilled outline in accent blue, drawn last so it's on top of
-    // both the SVG view and the toolpath/simulation overlays.
+    // SVG selection halo — translucent blue on TOP of the artwork.
+    // Because it's translucent the asset's real color shows through
+    // tinted, so the user can still read the original art. Toolpath
+    // selection (preview.js) goes BENEATH because plotted strokes have
+    // no fill to tint, so a halo on top would just obscure them.
     if (state.selectedShapeIds.size > 0) {
         canvas.appendChild(buildSelectionOverlay());
+    }
+
+    // Toolpath view — single overlay. When simulatePens is on it renders
+    // each stroke at its pen width (the old "Simulation" mode); otherwise
+    // thin diagnostic lines with travel moves between strokes.
+    let stats = null;
+    if (state.preview.showToolpath) {
+        requestPreview();
+        if (state.preview.simulatePens) {
+            canvas.appendChild(buildSimulationOverlay());
+        } else {
+            const r = buildToolpathOverlay();
+            canvas.appendChild(r.overlay);
+            stats = r.stats;
+        }
     }
 
     // Snap indicator: small marker drawn at the active snap point while
@@ -73,9 +78,31 @@ export function render() {
     }
 
     updateStatsLine(stats);
+    updateTargetEditingBanner();
     renderLayersPanel();
     renderToolpathLayersPanel();
     renderStylePanel();
+    renderActiveLayerPanel();
+    renderPlotColorsPanel();
+}
+
+/** Floating banner above the canvas while the user is target-editing a
+ *  toolpath — gives them a clear "you're in this mode" cue with an Esc
+ *  hint. Lazily created and reused; removed when mode exits. */
+function updateTargetEditingBanner() {
+    let el = document.getElementById("targetEditBanner");
+    const id = state.targetEditingToolpathId;
+    if (!id) { if (el) el.remove(); return; }
+    const tp = state.toolpaths.find(t => t.id === id);
+    if (!tp) return;
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "targetEditBanner";
+        el.className = "target-edit-banner";
+        const wrap = document.getElementById("canvasWrap");
+        if (wrap) wrap.appendChild(el);
+    }
+    el.textContent = `Editing target for "${tp.name}" — click shapes · Esc to finish`;
 }
 
 // SVG view: render shapes exactly as the source SVG would look — solid
@@ -147,19 +174,24 @@ function buildSnapMarker([x, y]) {
 }
 
 function buildSelectionOverlay() {
+    // Drawn BENEATH the artwork. A thick translucent blue stroke
+    // extends out beyond the shape's edge, and a soft fill tints the
+    // interior — together they read as a colored shadow / halo without
+    // touching the asset's own colors. Non-scaling-stroke keeps the
+    // halo a constant visual thickness at any zoom.
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("data-overlay", "selection");
     g.setAttribute("pointer-events", "none");
-    g.setAttribute("fill", "none");
-    g.setAttribute("stroke", "#1177bb");
-    g.setAttribute("stroke-width", "2");
+    g.setAttribute("fill", "rgba(17, 119, 187, 0.18)");
+    g.setAttribute("stroke", "rgba(17, 119, 187, 0.55)");
+    g.setAttribute("stroke-width", "6");
     g.setAttribute("stroke-linejoin", "round");
     g.setAttribute("stroke-linecap", "round");
     for (const sid of state.selectedShapeIds) {
         const s = findShape(sid);
         if (!s) continue;
         const el = makeShapeElement(s);
-        // Strip any per-shape paint overrides so the accent blue stroke wins.
+        // Strip per-shape paint so the group's fill+stroke take effect.
         el.removeAttribute("fill");
         el.removeAttribute("stroke");
         el.setAttribute("vector-effect", "non-scaling-stroke");
@@ -167,6 +199,23 @@ function buildSelectionOverlay() {
         g.appendChild(el);
     }
     return g;
+}
+
+function buildPaper() {
+    // The doc paper rectangle is drawn in user-space so it scrolls and
+    // zooms with the viewBox — no CSS background needed.
+    const r = document.createElementNS(SVG_NS, "rect");
+    r.setAttribute("x", 0); r.setAttribute("y", 0);
+    r.setAttribute("width", state.doc.w);
+    r.setAttribute("height", state.doc.h);
+    // CSS vars don't resolve inside an SVG presentation attribute —
+    // set the fill via style so the --canvas-bg theme variable works.
+    r.style.fill = "var(--canvas-bg)";
+    r.setAttribute("stroke", "#3e3e42");
+    r.setAttribute("stroke-width", "1");
+    r.setAttribute("vector-effect", "non-scaling-stroke");
+    r.setAttribute("pointer-events", "none");
+    return r;
 }
 
 function buildGrid() {

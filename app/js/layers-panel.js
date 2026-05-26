@@ -1,11 +1,8 @@
-// Layer panel UI on the left sidebar. Renders the layer list as a tree:
-// layers with the same `group` property are nested under a collapsible
-// group header. Loose layers (no group) appear flat at the bottom.
+// Layer panel UI on the left sidebar. Renders the design/art layers list.
 
-import { state, makeLayer } from "./state.js";
+import { state, makeArtLayer } from "./state.js";
 import { layersEl, $, toast } from "./dom.js";
 import { render } from "./render.js";
-import { renderActiveLayerPanel } from "./active-layer-panel.js";
 import { snapshot } from "./history.js";
 
 // group name → boolean (collapsed?)
@@ -14,70 +11,204 @@ const collapsed = new Map();
 export function renderLayersPanel() {
     layersEl.innerHTML = "";
 
-    // Group layers by `group` property, preserving insertion order. Layers
-    // without a group go under the synthetic "" bucket = rendered flat.
-    const groups = new Map();
-    for (const layer of state.layers) {
-        const key = layer.group || "";
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(layer);
+    const tree = buildLayerTree();
+    if (tree.length === 0) {
+        layersEl.textContent = "No art layers.";
+        return;
     }
 
-    // Render groups in reverse so the panel reads top-down with the most
-    // recently added layer at top (matches the previous behavior).
-    const orderedGroupNames = [...groups.keys()].reverse();
-    for (const name of orderedGroupNames) {
-        const layers = groups.get(name).slice().reverse();
-        if (name === "") {
-            for (const layer of layers) layersEl.appendChild(layerRow(layer, false));
-        } else {
-            layersEl.appendChild(groupHeader(name, layers));
-            if (!collapsed.get(name)) {
-                for (const layer of layers) layersEl.appendChild(layerRow(layer, true));
+    for (const group of tree) {
+        layersEl.appendChild(groupRow(group));
+        if (collapsed.get(group.id)) continue;
+
+        for (const colorBucket of group.colors) {
+            layersEl.appendChild(colorRow(colorBucket, group));
+            if (collapsed.get(colorBucket.id)) continue;
+
+            for (const roleBucket of colorBucket.roles) {
+                layersEl.appendChild(roleRow(roleBucket, colorBucket, group));
+                if (collapsed.get(roleBucket.id)) continue;
+
+                for (const shape of roleBucket.shapes) {
+                    layersEl.appendChild(shapeRow(shape, roleBucket, colorBucket, group));
+                }
             }
         }
     }
 }
 
-function groupHeader(name, layers) {
+function buildLayerTree() {
+    const groups = new Map();
+    const hasNamedGroups = state.artLayers.some(l => l.group && l.group.trim() !== "");
+    const rootName = hasNamedGroups ? "ungrouped" : "All shapes";
+
+    for (const layer of state.artLayers) {
+        const groupKey = hasNamedGroups ? (layer.group || "") : rootName;
+        const groupName = hasNamedGroups ? (layer.group || rootName) : rootName;
+        if (!groups.has(groupKey)) {
+            groups.set(groupKey, { id: groupId(groupKey), name: groupName, layers: [], colors: [] });
+        }
+        groups.get(groupKey).layers.push(layer);
+    }
+
+    for (const group of groups.values()) {
+        const buckets = new Map();
+        for (const layer of group.layers) {
+            for (const shape of layer.shapes) {
+                const entries = [];
+                if (shape._fill !== undefined && shape._fill !== null) entries.push({ role: "fill", color: shape._fill, shape });
+                if (shape._stroke !== undefined && shape._stroke !== null) entries.push({ role: "stroke", color: shape._stroke, shape });
+                if (entries.length === 0 && layer.color) entries.push({ role: "stroke", color: layer.color, shape });
+
+                for (const entry of entries) {
+                    const color = normalizeColor(entry.color || "#000000");
+                    const colorKey = color;
+                    if (!buckets.has(colorKey)) {
+                        buckets.set(colorKey, { id: colorId(group.id, colorKey), color, roles: [] });
+                    }
+                    const colorBucket = buckets.get(colorKey);
+                    let roleBucket = colorBucket.roles.find(r => r.role === entry.role);
+                    if (!roleBucket) {
+                        roleBucket = { id: roleId(colorBucket.id, entry.role), role: entry.role, shapes: [] };
+                        colorBucket.roles.push(roleBucket);
+                    }
+                    roleBucket.shapes.push(shape);
+                }
+            }
+        }
+        group.colors = [...buckets.values()].sort((a, b) => a.color.localeCompare(b.color));
+        for (const colorBucket of group.colors) {
+            colorBucket.roles.sort((a, b) => a.role.localeCompare(b.role));
+        }
+    }
+
+    return [...groups.values()];
+}
+
+function groupId(groupKey) { return `group:${groupKey}`; }
+function colorId(groupId, color) { return `${groupId}:color:${color}`; }
+function roleId(colorId, role) { return `${colorId}:role:${role}`; }
+
+function normalizeColor(value) {
+    return value ? value.trim().toLowerCase() : "#000000";
+}
+
+function groupRow(group) {
     const row = document.createElement("div");
     row.className = "group-row";
 
-    const isCollapsed = !!collapsed.get(name);
+    const isCollapsed = !!collapsed.get(group.id);
     const chevron = document.createElement("span");
     chevron.className = "chevron";
     chevron.textContent = isCollapsed ? "▸" : "▾";
 
-    // Bulk visibility for this group (SVG-side concern only).
     const visAll = document.createElement("span");
     visAll.className = "vis";
-    const allVisible = layers.every(l => l.visible);
+    const allVisible = group.layers.every(l => l.visible);
     visAll.textContent = allVisible ? "●" : "○";
     visAll.title = allVisible ? "Hide group" : "Show group";
     visAll.onclick = (e) => {
         e.stopPropagation();
         const target = !allVisible;
-        for (const l of layers) l.visible = target;
+        for (const l of group.layers) l.visible = target;
         render();
     };
 
     const title = document.createElement("span");
     title.className = "group-name";
-    title.textContent = name;
+    title.textContent = group.name;
 
     const count = document.createElement("span");
     count.className = "group-count";
-    count.textContent = `${layers.length}`;
+    count.textContent = `${group.colors.reduce((sum, c) => sum + c.roles.reduce((r, b) => r + b.shapes.length, 0), 0)}`;
 
-    row.onclick = () => { collapsed.set(name, !isCollapsed); renderLayersPanel(); };
+    row.onclick = () => { collapsed.set(group.id, !isCollapsed); renderLayersPanel(); };
     row.append(chevron, visAll, title, count);
     return row;
+}
+
+function colorRow(colorBucket, group) {
+    const row = document.createElement("div");
+    row.className = "group-row indented";
+
+    const isCollapsed = !!collapsed.get(colorBucket.id);
+    const chevron = document.createElement("span");
+    chevron.className = "chevron";
+    chevron.textContent = isCollapsed ? "▸" : "▾";
+
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = colorBucket.color;
+
+    const title = document.createElement("span");
+    title.className = "group-name";
+    title.textContent = colorBucket.color;
+
+    const count = document.createElement("span");
+    count.className = "group-count";
+    count.textContent = `${colorBucket.roles.reduce((sum, role) => sum + role.shapes.length, 0)}`;
+
+    row.onclick = () => { collapsed.set(colorBucket.id, !isCollapsed); renderLayersPanel(); };
+    row.append(chevron, sw, title, count);
+    return row;
+}
+
+function roleRow(roleBucket, colorBucket, group) {
+    const row = document.createElement("div");
+    row.className = "group-row indented";
+    row.style.paddingLeft = "32px";
+
+    const isCollapsed = !!collapsed.get(roleBucket.id);
+    const chevron = document.createElement("span");
+    chevron.className = "chevron";
+    chevron.textContent = isCollapsed ? "▸" : "▾";
+
+    const title = document.createElement("span");
+    title.className = "group-name";
+    title.textContent = roleBucket.role === "fill" ? "Fills" : "Strokes";
+
+    const count = document.createElement("span");
+    count.className = "group-count";
+    count.textContent = `${roleBucket.shapes.length}`;
+
+    row.onclick = () => { collapsed.set(roleBucket.id, !isCollapsed); renderLayersPanel(); };
+    row.append(chevron, title, count);
+    return row;
+}
+
+function shapeRow(shape, roleBucket, colorBucket, group) {
+    const row = document.createElement("div");
+    row.className = "layer-row indented";
+    row.style.paddingLeft = "48px";
+    if (state.selectedShapeIds.has(shape.id)) row.classList.add("active");
+
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = colorBucket.color;
+
+    const label = document.createElement("span");
+    label.className = "group-name";
+    label.textContent = shapeLabel(shape, roleBucket.role);
+
+    row.onclick = (e) => {
+        e.stopPropagation();
+        state.selectedShapeIds = new Set([shape.id]);
+        render();
+    };
+    row.append(sw, label);
+    return row;
+}
+
+function shapeLabel(shape, role) {
+    const type = shape.type || "path";
+    const suffix = shape.id ? ` (${shape.id.slice(-6)})` : "";
+    return `${type}${suffix}`;
 }
 
 function layerRow(layer, indented) {
     const row = document.createElement("div");
     row.className = "layer-row" + (indented ? " indented" : "");
-    if (layer.id === state.activeLayerId) row.classList.add("active");
+    if (layer.id === state.activeArtLayerId) row.classList.add("active");
 
     // Count selected shapes in this layer for the visual indicator.
     let selectedCount = 0;
@@ -100,8 +231,6 @@ function layerRow(layer, indented) {
         input.click();
     };
 
-    // Strip the "group / " prefix from the display name when nested —
-    // the group header already gives that context.
     const baseName = indented && layer.group
         ? layer.name.replace(new RegExp("^" + escapeRe(layer.group) + "\\s*/\\s*"), "")
         : layer.name;
@@ -114,7 +243,6 @@ function layerRow(layer, indented) {
         renderLayersPanel();
     };
 
-    // Optional badge showing how many shapes in this layer are selected.
     const badge = selectedCount > 0
         ? el("span", { class: "sel-count", title: `${selectedCount} selected` }, String(selectedCount))
         : null;
@@ -122,17 +250,16 @@ function layerRow(layer, indented) {
     const del = el("span", { class: "del", title: "Delete layer" }, "×");
     del.onclick = (e) => {
         e.stopPropagation();
-        if (state.layers.length <= 1) { toast("Need at least one layer.", true); return; }
+        if (state.artLayers.length <= 1) { toast("Need at least one layer.", true); return; }
         snapshot();
-        state.layers = state.layers.filter(l => l.id !== layer.id);
-        if (state.activeLayerId === layer.id) state.activeLayerId = state.layers[state.layers.length - 1].id;
+        state.artLayers = state.artLayers.filter(l => l.id !== layer.id);
+        if (state.activeArtLayerId === layer.id) state.activeArtLayerId = state.artLayers[state.artLayers.length - 1].id;
         render();
     };
 
     row.onclick = () => {
-        state.activeLayerId = layer.id;
+        state.activeArtLayerId = layer.id;
         renderLayersPanel();
-        renderActiveLayerPanel();
     };
     row.append(vis, sw, name);
     if (badge) row.append(badge);
@@ -153,20 +280,18 @@ export function installLayerButtons() {
     $("#addLayer").onclick = () => {
         snapshot();
         const colors = ["#111111", "#c4444f", "#0e639c", "#3a8a3e", "#a060b0", "#c08020"];
-        const color = colors[state.layers.length % colors.length];
-        const layer = makeLayer(`layer ${state.layers.length + 1}`, color);
-        state.layers.push(layer);
-        state.activeLayerId = layer.id;
+        const color = colors[state.artLayers.length % colors.length];
+        const layer = makeArtLayer(`layer ${state.artLayers.length + 1}`, color);
+        state.artLayers.push(layer);
+        state.activeArtLayerId = layer.id;
         render();
     };
     $("#clearLayer").onclick = () => {
-        const l = state.layers.find(l => l.id === state.activeLayerId);
+        const l = state.artLayers.find(l => l.id === state.activeArtLayerId);
         if (!l || !l.shapes.length) return;
         if (!confirm(`Clear all shapes in "${l.name}"?`)) return;
         snapshot();
         l.shapes = [];
         render();
     };
-    // Export-all / export-none buttons live on the right panel now
-    // (toolpath-layers-panel.js wires them).
 }

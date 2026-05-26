@@ -35,12 +35,37 @@ html, body {
 .panel section:last-child { border-bottom: 0; }
 
 /* ===== toolbar ===== */
-.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 6px; }
+/* Compact tool grid — 4 per row, no section headers, minimal padding */
+.toolbox { padding: 0; border-bottom: 0; }
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; padding: 2px 4px; }
 .tool {
     background: var(--panel-2); border: 1px solid transparent; color: var(--text);
-    padding: 10px 4px; cursor: pointer; font-size: 18px; border-radius: 3px;
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 4px 2px; cursor: pointer; border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 22px;
 }
+.tool svg { width: 13px; height: 13px; display: block; }
+/* Transform tools (select/rotate/scale) — neutral cool tint.
+   Draw tools — warm tint. Distinguishes the two groups even with the
+   section headers removed. */
+.tool[data-tool="select"],
+.tool[data-tool="rotate"],
+.tool[data-tool="scale"]    { background: #3a2828; }
+.tool[data-tool="line"],
+.tool[data-tool="rect"],
+.tool[data-tool="ellipse"],
+.tool[data-tool="polyline"],
+.tool[data-tool="freehand"] { background: #3a3528; }
+.tool[data-tool="select"]:hover,
+.tool[data-tool="rotate"]:hover,
+.tool[data-tool="scale"]:hover { background: #4d3535; }
+.tool[data-tool="line"]:hover,
+.tool[data-tool="rect"]:hover,
+.tool[data-tool="ellipse"]:hover,
+.tool[data-tool="polyline"]:hover,
+.tool[data-tool="freehand"]:hover { background: #4a4030; }
+/* Active state still wins (accent blue) regardless of group tint */
+.tool.active { background: var(--accent) !important; border-color: var(--accent-hi); }
 .tool:hover { border-color: var(--border); }
 .tool.active { background: var(--accent); border-color: var(--accent-hi); }
 .tool small { font-size: 9px; color: var(--text-dim); }
@@ -73,6 +98,34 @@ html, body {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-row .group-count { color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; padding-right: 4px; }
 
+/* Plot Colors panel */
+.pc-row {
+    display: grid; grid-template-columns: 22px 1fr 28px 16px; gap: 6px;
+    align-items: center; padding: 4px 8px; border-radius: 3px; margin-bottom: 2px;
+}
+.pc-row:hover { background: var(--panel-2); }
+.pc-swatch {
+    position: relative; width: 20px; height: 20px;
+    border: 1px solid var(--border); border-radius: 3px;
+    cursor: pointer; padding: 0;
+}
+.pc-name {
+    background: transparent; border: 0; color: var(--text);
+    font-size: 12px; padding: 2px 4px; border-radius: 3px;
+    min-width: 0;
+}
+.pc-name:focus { background: var(--panel-2); outline: 1px solid var(--accent-hi); }
+.pc-badge {
+    background: var(--panel-2); color: var(--text-dim);
+    font-size: 10px; padding: 1px 6px; border-radius: 8px;
+    font-variant-numeric: tabular-nums; text-align: center;
+}
+.pc-del {
+    color: var(--text-dim); cursor: pointer; text-align: center; font-size: 13px;
+}
+.pc-del:hover { color: var(--danger); }
+#plotColors .empty { color: var(--text-dim); font-size: 12px; padding: 8px 12px; font-style: italic; }
+
 /* Right-side toolpath layer rows */
 .tp-layer-row {
     display: grid; grid-template-columns: 14px 14px 1fr; gap: 6px;
@@ -80,7 +133,155 @@ html, body {
     cursor: pointer; margin-bottom: 2px;
 }
 .tp-layer-row:hover { background: var(--panel-2); }
+.tp-layer-row.selected { background: rgba(17, 119, 187, 0.18); }
 .tp-layer-row.active { background: var(--accent); color: white; }
+.tp-layer-row.target-editing {
+    background: rgba(255, 138, 61, 0.22);
+    box-shadow: inset 2px 0 0 #ff8a3d;
+}
+/* Pen folder "selected" highlight — new + Outline / + Fill paths land
+   inside this folder. Distinct from active-toolpath blue so the user
+   can tell which folder is the target without confusing it with a
+   toolpath selection. */
+.group-row.pen-selected {
+    background: rgba(255, 138, 61, 0.18);
+    box-shadow: inset 2px 0 0 #ff8a3d;
+}
+/* While target-editing, let clicks fall through the toolpath overlay
+   to the SVG shapes underneath, and lift the ghost art's opacity so
+   shapes are easy to hit. */
+body.target-editing .tp-group,
+body.target-editing .tp-group * { pointer-events: none !important; }
+body.target-editing [data-layer-id] { opacity: 0.6 !important; }
+/* Drag-and-drop visuals for moving toolpaths between pen folders. */
+.tp-layer-row.dragging, .group-row.dragging { opacity: 0.5; }
+.group-row.drop-target {
+    background: rgba(17, 119, 187, 0.32);
+    box-shadow: inset 0 0 0 1px var(--accent-hi);
+}
+/* Drag handle (⋮⋮) shown on every reorderable row. Greyed out by
+   default; lights up with a grab cursor on hover so it's obvious
+   what's grabbable. */
+.drag-handle {
+    color: var(--text-dim); cursor: grab;
+    font-size: 11px; line-height: 1;
+    text-align: center; user-select: none;
+}
+.drag-handle:hover { color: var(--text); }
+.dragging .drag-handle { cursor: grabbing; }
+/* Insertion indicator when dropping onto another toolpath row — a thin
+   accent-blue bar appears at the top (drop-before) or bottom (drop-after)
+   of the target row showing where the dragged item will land. */
+.tp-layer-row.drop-before { box-shadow: inset 0 2px 0 var(--accent-hi); }
+.tp-layer-row.drop-after  { box-shadow: inset 0 -2px 0 var(--accent-hi); }
+.bulk-banner {
+    background: rgba(17, 119, 187, 0.22);
+    border-left: 2px solid var(--accent-hi);
+    color: var(--text); font-size: 11px;
+    padding: 6px 10px; margin: 6px 8px 4px;
+    border-radius: 3px;
+}
+.target-edit-banner {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    z-index: 25;
+    background: rgba(255, 138, 61, 0.95); color: #1e1e1e;
+    border: 1px solid #d56a1f; border-radius: 4px;
+    padding: 6px 14px; font-size: 12px; font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,.45);
+    pointer-events: none;
+}
+
+/* Cloud / projects panel */
+/* Stacked label + full-width input — the URL is too long for the
+   1fr 100px .field grid the numeric settings use. */
+.cloud-field { padding: 4px 12px; display: flex; flex-direction: column; gap: 4px; }
+.cloud-field label { font-size: 11px; color: var(--text-dim); }
+#cloudUrl, #cloudKey {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 6px; border-radius: 3px; font-size: 11px; width: 100%;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+#cloudUrl:focus, #cloudKey:focus { outline: 1px solid var(--accent-hi); }
+.cloud-list { padding: 4px; max-height: 22vh; overflow-y: auto; }
+.cloud-row {
+    display: grid; grid-template-columns: 1fr auto 18px; gap: 6px;
+    align-items: center; padding: 4px 8px; border-radius: 3px;
+    cursor: pointer; margin-bottom: 2px; font-size: 12px;
+}
+.cloud-row:hover { background: var(--panel-2); }
+.cloud-row .cloud-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.cloud-row .cloud-meta { color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
+.cloud-row .cloud-del {
+    background: transparent; border: 0; color: var(--text-dim);
+    font-size: 14px; cursor: pointer; padding: 0;
+}
+.cloud-row .cloud-del:hover { color: var(--danger); }
+.empty { color: var(--text-dim); font-size: 11px; padding: 8px 12px; }
+.empty.err { color: #ffb0b6; }
+
+/* Projects / Presets popup — fixed-position popover anchored under the
+   button that opened it. cloud-picker.js positions and removes it. */
+.preset-popover {
+    position: fixed; z-index: 300;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.55);
+    padding: 12px; min-width: 520px; max-width: 760px;
+    display: flex; flex-direction: column; gap: 10px;
+    max-height: 80vh;
+}
+.preset-popover .preset-header {
+    font-size: 11px; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: .08em;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: baseline;
+}
+.preset-popover .preset-header .preset-current {
+    text-transform: none; letter-spacing: 0; color: var(--text);
+    font-size: 11px; font-weight: 500;
+}
+.preset-popover .preset-actions { display: flex; gap: 6px; }
+.preset-popover .preset-actions .btn { flex: 1; }
+.preset-popover .preset-actions .btn:disabled { opacity: .4; cursor: not-allowed; }
+.preset-popover .preset-list { overflow-y: auto; flex: 1; min-height: 0; }
+.preset-popover .preset-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 10px;
+    align-items: center; padding: 6px 8px; border-radius: 3px;
+    font-size: 12px; margin-bottom: 2px;
+}
+.preset-popover.has-thumbs .preset-row {
+    grid-template-columns: 72px 1fr auto;
+}
+.preset-popover .preset-row:hover { background: var(--panel-2); }
+.preset-popover .preset-thumb {
+    width: 72px; height: 72px;
+    background: var(--canvas-bg); border: 1px solid var(--border);
+    border-radius: 3px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+}
+.preset-popover .preset-thumb svg { width: 100%; height: 100%; display: block; }
+.preset-popover .preset-name-wrap {
+    display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.preset-popover .preset-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text); cursor: pointer; font-size: 13px;
+}
+.preset-popover .preset-name:hover { color: var(--accent-hi); }
+.preset-popover .preset-when {
+    color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums;
+}
+.preset-popover .preset-row-actions { display: flex; gap: 4px; }
+.preset-popover .preset-icon-btn {
+    background: transparent; border: 1px solid transparent;
+    color: var(--text-dim); cursor: pointer; padding: 2px 6px;
+    border-radius: 3px; font-size: 13px; line-height: 1;
+}
+.preset-popover .preset-icon-btn:hover {
+    background: var(--panel-2); border-color: var(--border); color: var(--text);
+}
+.preset-popover .preset-del:hover { color: var(--danger); border-color: var(--danger); }
+.preset-popover .preset-empty { color: var(--text-dim); font-size: 11px; padding: 12px; text-align: center; }
+.preset-popover .preset-empty.err { color: #ffb0b6; }
 .tp-layer-row.indented { padding-left: 20px; }
 .tp-layer-row .exp { margin: 0; width: 14px; height: 14px; cursor: pointer; accent-color: var(--accent); }
 .tp-layer-row .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,.2); }
@@ -116,7 +317,11 @@ html, body {
     background: #2a2a2a; position: relative; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
 }
-.canvas-svg { background: var(--canvas-bg); box-shadow: 0 0 0 1px var(--border), 0 4px 24px rgba(0,0,0,.4); }
+/* Canvas now fills the wrap; the doc "paper" is a rect drawn in
+   user-space by render.js so it scrolls/zooms with the viewBox. The
+   SVG itself has no background — the wrap's dark gray shows through
+   the area outside the document. */
+.canvas-svg { background: transparent; }
 .canvas-svg.tool-line, .canvas-svg.tool-rect, .canvas-svg.tool-ellipse,
 .canvas-svg.tool-polyline, .canvas-svg.tool-freehand { cursor: crosshair; }
 .canvas-svg.tool-select { cursor: default; }
@@ -127,10 +332,27 @@ html, body {
    would force fill:none / fixed stroke width on every shape if set).
    The parent <g fill="none" stroke-width=0.3> provides a sensible default
    for un-attributed (user-drawn) shapes. */
-.shape { pointer-events: stroke; }
+.shape { pointer-events: stroke; cursor: pointer; transition: filter 0.06s ease; }
 .shape[fill]:not([fill="none"]) { pointer-events: fill; }
 .shape.selected { stroke-dasharray: 4 2; }
+/* Hover halo — same idea as the toolpath overlay: the shape under the
+   cursor pops so the user knows what they'll select. Uses drop-shadow
+   so unstroked (fill-only) shapes still get visible feedback. */
+.shape:hover { filter: drop-shadow(0 0 0.6px var(--accent-hi)) drop-shadow(0 0 0.4px var(--accent-hi)); }
 .preview { stroke: #888; stroke-dasharray: 3 3; fill: none; stroke-width: 0.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+
+/* ===== toolpath overlay hover / active highlights =====
+   .tp-group wraps each toolpath in the toolpath/simulation overlay.
+   .tp-hit holds invisible click geometry (shape area for fills, thick
+   transparent strokes for outlines); .tp-visible holds the drawn lines.
+   On :hover the visible strokes pop to make the target obvious. */
+.tp-group .tp-visible polyline { transition: stroke-width 0.06s ease, opacity 0.06s ease; }
+/* Selection is communicated by the .tp-halo translucent-blue layer
+   drawn underneath (preview.js); the visible ink stays untouched.
+   Hover keeps its thicker-stroke cue since it's a different signal
+   ("you're about to click this") from selection ("this is selected"). */
+.tp-group:hover .tp-visible polyline { stroke-width: 1.6; opacity: 1; }
+.tp-group:hover .tp-visible circle  { r: 0.9; }
 .status {
     position: absolute; bottom: 8px; left: 8px; right: 8px;
     color: var(--text-dim); font-size: 11px; pointer-events: none;
@@ -167,7 +389,7 @@ html, body {
     background: var(--panel-2); border: 1px solid var(--border);
     color: var(--text); padding: 10px 16px; border-radius: 4px;
     box-shadow: 0 4px 16px rgba(0,0,0,.6);
-    opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 100;
+    opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 400;
     max-width: 60vw;
 }
 #toast.show { opacity: 1; }
@@ -197,6 +419,39 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
 .tool.active { color: white; }
 
 /* preview toggles (top-left of canvas) */
+/* Small HUD shown during rotate/scale — displays the live value at
+   the cursor and accepts a typed exact value (Enter to apply). */
+.transform-hud {
+    position: absolute; z-index: 30;
+    background: rgba(20,20,20,.92); border: 1px solid var(--accent-hi);
+    border-radius: 4px; padding: 4px 8px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text);
+    box-shadow: 0 4px 12px rgba(0,0,0,.5);
+    pointer-events: auto;
+}
+.transform-hud[hidden] { display: none; }
+.transform-hud label {
+    color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: .05em; font-size: 9px;
+}
+.transform-hud input {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); padding: 2px 5px; border-radius: 2px;
+    width: 64px; font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.transform-hud span { color: var(--text-dim); font-size: 11px; }
+.transform-hud .btn { padding: 2px 8px; font-size: 11px; }
+
+.undo-floating {
+    position: absolute; bottom: 32px; left: 8px; display: flex; gap: 4px;
+    background: rgba(20,20,20,.85); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px; z-index: 20;
+}
+.undo-floating .view-toggle {
+    min-width: 28px; padding: 4px 8px; font-size: 14px; line-height: 1;
+}
+.undo-floating .view-toggle:disabled { opacity: .35; cursor: not-allowed; }
 .view-toggles {
     position: absolute; top: 8px; left: 8px; display: flex; gap: 4px;
     background: rgba(20,20,20,.85); border: 1px solid var(--border);
@@ -289,71 +544,56 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
 <div id="app">
     <!-- LEFT: tools + layers -->
     <div class="panel">
+        <section style="border-bottom: 1px solid var(--border); padding: 6px 6px 4px;">
+            <button class="btn" id="projectBtn" title="Save / open / delete full project (SVG + toolpaths + plot colors + settings)" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <svg viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 5.5 L2 14 L16 14 L16 7 L9 7 L7.5 5.5 Z"/>
+                </svg>
+                <span>Projects</span>
+            </button>
+        </section>
         <section style="border-bottom: 1px solid var(--border); padding: 6px;">
             <button class="btn primary" id="importBtn" style="width: 100%;">Import SVG…</button>
             <input type="file" id="importFile" accept=".svg,image/svg+xml">
         </section>
-        <section style="border-bottom: 1px solid var(--border); padding: 6px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-                <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
-                <button class="btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button>
-            </div>
-        </section>
-        <section>
-            <h2>Select</h2>
-            <div class="tools">
+        <section class="toolbox">
+            <div class="tools" id="allTools">
                 <button class="tool active" data-tool="select" title="Select (V) — click a shape; drag empty area for marquee; shift to add">
-                    <svg viewBox="0 0 18 18" width="20" height="20" fill="currentColor">
+                    <svg viewBox="0 0 18 18" width="14" height="14" fill="currentColor">
                         <path d="M4 2 L4 14 L7.2 11.2 L9.4 15.5 L11.4 14.5 L9.3 10.3 L13 10.3 Z"/>
                     </svg>
-                    <small>V</small>
+
                 </button>
-            </div>
-        </section>
-        <section class="mode-svg-only">
-            <h2>Transform</h2>
-            <div class="tools" id="transformTools">
-                <button class="tool" data-tool="rotate" title="Rotate (T) — drag a shape to rotate around its center">
-                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14 9 A 5 5 0 1 0 11 13.6"/>
-                        <polyline points="14,5 14,9 10,9"/>
+                <button class="tool mode-svg-only" data-tool="rotate" title="Rotate — drag a shape to rotate around its center">
+                    <!-- Simple 3/4 circular arrow — minimal rotate icon -->
+                    <svg viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14.5 9 A 5.5 5.5 0 1 1 9 3.5"/>
+                        <polyline points="11.5,1.5 9,3.5 11,6"/>
                     </svg>
-                    <small>T</small>
+
                 </button>
-                <button class="tool" data-tool="scale" title="Scale (S) — drag a shape to scale from its center">
-                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="12" height="12" rx="0.5"/>
-                        <polyline points="6,9 9,6 12,9"/>
-                        <polyline points="9,3 9,15"/>
+                <button class="tool mode-svg-only" data-tool="scale" title="Scale (S) — drag a shape to scale from its center">
+                    <!-- Diagonal double-headed arrow (NE/SW) — universal resize -->
+                    <svg viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="3.5" y1="14.5" x2="14.5" y2="3.5"/>
+                        <polyline points="3.5,9.5 3.5,14.5 8.5,14.5"/>
+                        <polyline points="9.5,3.5 14.5,3.5 14.5,8.5"/>
                     </svg>
-                    <small>S</small>
+
                 </button>
-            </div>
-        </section>
-        <section class="mode-svg-only">
-            <h2>Draw</h2>
-            <div class="tools" id="drawTools">
-                <button class="tool" data-tool="line" title="Line (L)">
-                    <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                        <line x1="3" y1="15" x2="15" y2="3"/>
-                        <circle cx="3" cy="15" r="1.4" fill="currentColor" stroke="none"/>
-                        <circle cx="15" cy="3" r="1.4" fill="currentColor" stroke="none"/>
-                    </svg>
-                    <small>L</small>
-                </button>
-                <button class="tool" data-tool="rect" title="Rectangle (R)">
+                <button class="tool mode-svg-only" data-tool="rect" title="Rectangle (R)">
                     <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
                         <rect x="3" y="4.5" width="12" height="9" rx="0.5"/>
                     </svg>
-                    <small>R</small>
+
                 </button>
-                <button class="tool" data-tool="ellipse" title="Ellipse (E)">
+                <button class="tool mode-svg-only" data-tool="ellipse" title="Ellipse (E)">
                     <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
                         <ellipse cx="9" cy="9" rx="6" ry="5"/>
                     </svg>
-                    <small>E</small>
+
                 </button>
-                <button class="tool" data-tool="polyline" title="Polyline (P) — Enter to finish">
+                <button class="tool mode-svg-only" data-tool="polyline" title="Polyline (P) — Enter to finish">
                     <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="2,14 6,5 10,11 15,3"/>
                         <circle cx="2" cy="14" r="1.2" fill="currentColor" stroke="none"/>
@@ -361,13 +601,13 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
                         <circle cx="10" cy="11" r="1.2" fill="currentColor" stroke="none"/>
                         <circle cx="15" cy="3" r="1.2" fill="currentColor" stroke="none"/>
                     </svg>
-                    <small>P</small>
+
                 </button>
-                <button class="tool" data-tool="freehand" title="Freehand (F)">
+                <button class="tool mode-svg-only" data-tool="freehand" title="Freehand (F)">
                     <svg viewBox="0 0 18 18" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
                         <path d="M2 12 C 4 6, 6 15, 8 9 S 12 4, 14 10 S 16 14, 16 14"/>
                     </svg>
-                    <small>F</small>
+
                 </button>
             </div>
         </section>
@@ -402,9 +642,25 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
         <div class="drop-overlay" id="dropOverlay">Drop SVG to import</div>
 
         <div class="view-toggles">
-            <button class="view-toggle on" id="toggleSvg" title="Show/hide the artwork">SVG</button>
-            <button class="view-toggle" id="toggleToolpath" title="Show/hide the exact toolpath the plotter will draw">Toolpath</button>
-            <button class="view-toggle" id="toggleSimulation" title="Render strokes at each layer's pen width — what the plotted page looks like">Simulation</button>
+            <button class="view-toggle on" id="toggleSvg" title="Show the artwork">SVG</button>
+            <button class="view-toggle" id="toggleToolpath" title="Show the exact toolpath the plotter will draw">Toolpath</button>
+            <button class="view-toggle" id="toggleSimPens" title="Render toolpath strokes at their actual pen width">Pen widths</button>
+        </div>
+
+        <!-- Transform HUD — shows the live angle/factor while rotating or
+             scaling, and lets the user type an exact value. Hidden by
+             default; interaction.js positions and fills it. -->
+        <div id="transformHud" class="transform-hud" hidden>
+            <label id="transformHudLabel">angle</label>
+            <input id="transformHudInput" type="number" step="0.1">
+            <span id="transformHudUnit">°</span>
+            <button class="btn primary" id="transformHudOk" title="Apply">OK</button>
+            <button class="btn" id="transformHudCancel" title="Revert">Cancel</button>
+        </div>
+
+        <div class="undo-floating">
+            <button class="view-toggle" id="undoBtn" title="Undo (Ctrl+Z)" disabled>↶</button>
+            <button class="view-toggle" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
         </div>
 
         <div class="help">Pan: space + drag · Zoom: scroll · Delete: Del · Polyline finish: Enter or double-click</div>
@@ -418,15 +674,28 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
     <!-- RIGHT: toolpath / plot settings + export -->
     <div class="panel right">
         <section class="mode-plot-only">
-            <h2>Toolpath Layers</h2>
-            <div id="toolpathLayers" style="padding: 4px; max-height: 30vh; overflow-y: auto;"></div>
+            <h2>Plot Colors (pens)</h2>
+            <div id="plotColors" style="padding: 4px; max-height: 22vh; overflow-y: auto;"></div>
             <div class="layer-actions">
-                <button class="btn" id="exportAll" title="Select every layer for export" style="flex:1;">Select all</button>
-                <button class="btn" id="exportNone" title="Deselect every layer" style="flex:1;">Deselect all</button>
+                <button class="btn" id="addPlotColor" title="Add a pen" style="flex:1;">+ Pen</button>
+                <button class="btn" id="savePalette" title="Save current palette to cloud" style="flex:1;">Save</button>
+                <button class="btn" id="loadPalette" title="Load a palette from cloud" style="flex:1;">Load</button>
+            </div>
+        </section>
+        <section class="mode-plot-only">
+            <h2>Toolpath Operations</h2>
+            <div id="toolpathLayers" style="padding: 4px; max-height: 30vh; overflow-y: auto;"></div>
+            <div class="layer-actions" style="margin-bottom: 4px;">
+                <button class="btn" id="addOutlineTp" style="flex:1;">+ Outline</button>
+                <button class="btn" id="addFillTp" style="flex:1;">+ Fill</button>
+            </div>
+            <div class="layer-actions">
+                <button class="btn" id="exportAll" title="Select every toolpath for export" style="flex:1;">Select all</button>
+                <button class="btn" id="exportNone" title="Deselect every toolpath" style="flex:1;">Deselect all</button>
             </div>
         </section>
         <section id="activeLayerPanel" class="mode-plot-only">
-            <h2>Active Layer</h2>
+            <h2>Active Toolpath</h2>
             <div id="activeLayerContent"></div>
         </section>
         <section class="mode-toolpath-only">
@@ -454,7 +723,7 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
         </section>
         <div class="export">
             <button class="btn primary" id="exportBtn">Export G-code (.zip)</button>
-            <small style="color: var(--text-dim); text-align: center;">One .gcode per layer</small>
+            <small style="color: var(--text-dim); text-align: center;">One .gcode per toolpath</small>
         </div>
     </div>
 </div>

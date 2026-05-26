@@ -1,0 +1,241 @@
+// Generic "preset picker" popup — projects / palettes share this UI.
+// Header has two actions (Save current / Save as); each row has rename,
+// duplicate, delete; clicking a name loads.
+//
+// Adapters (all optional except list/save/load/del/title):
+//   list()                  → Promise<[{ id, customMeta:{name}, savedAt }]>
+//   save()                  → Promise<{ id, name, thumbnail? }>  — "Save as new"
+//   saveCurrent()           → Promise<{ id, name, thumbnail? } | null>
+//                              "Save" overwrite of the current id; returns
+//                              null when there isn't one (falls back to save())
+//   load(id)                → Promise<void>
+//   del(id)                 → Promise<void>
+//   rename(id, newName)     → Promise<void>
+//   duplicate(id)           → Promise<{ id, name, thumbnail? }>
+//   getThumbnail(id)        → Promise<string|null>     SVG markup
+//   currentName             → string|null              header hint
+//   title, saveLbl          → strings
+
+import { toast } from "./dom.js";
+
+let openEl = null;
+
+function close() {
+    if (!openEl) return;
+    openEl.remove();
+    openEl = null;
+    document.removeEventListener("mousedown", onOutside, true);
+    document.removeEventListener("keydown", onKey, true);
+}
+
+function onOutside(e) {
+    if (!openEl) return;
+    if (!openEl.contains(e.target)) close();
+}
+
+function onKey(e) {
+    if (e.key === "Escape") close();
+}
+
+export async function openPicker(anchorEl, opts) {
+    const {
+        list, save, saveCurrent, load, del,
+        rename, duplicate, getThumbnail,
+        currentName, title, saveLbl,
+    } = opts;
+
+    close();
+    const rect = anchorEl.getBoundingClientRect();
+    const pop = document.createElement("div");
+    pop.className = "preset-popover";
+    if (getThumbnail) pop.classList.add("has-thumbs");
+    pop.style.left = `${Math.max(8, rect.left)}px`;
+    pop.style.top  = `${rect.bottom + 4}px`;
+
+    const headerLine = currentName
+        ? `<div class="preset-header"><span>${escapeHtml(title)}</span><span class="preset-current">${escapeHtml(currentName)}</span></div>`
+        : `<div class="preset-header">${escapeHtml(title)}</div>`;
+    pop.innerHTML = `
+        ${headerLine}
+        <div class="preset-actions">
+            ${saveCurrent ? `<button class="btn primary preset-save-current" ${currentName ? "" : "disabled"}>Save</button>` : ""}
+            <button class="btn preset-save-as">${escapeHtml(saveLbl)}</button>
+        </div>
+        <div class="preset-list">Loading…</div>
+    `;
+    document.body.appendChild(pop);
+    openEl = pop;
+
+    // Local cache so UI reacts instantly — KV's list() is eventually
+    // consistent and a fresh re-list won't reflect a brand-new write
+    // for ~60s.
+    let cachedItems = [];
+
+    async function runSave(saveFn) {
+        if (!saveFn) return;
+        const btns = pop.querySelectorAll(".preset-actions button");
+        const labels = [...btns].map(b => b.textContent);
+        for (const b of btns) { b.disabled = true; }
+        try {
+            const r = await saveFn();
+            if (r) {
+                toast(`Saved "${r.name || ""}"`);
+                // Optimistic insert (or update if same id already in cache).
+                cachedItems = cachedItems.filter(x => x.id !== r.id);
+                cachedItems.unshift({
+                    id: r.id,
+                    customMeta: { name: r.name },
+                    savedAt: new Date().toISOString(),
+                    _thumb: r.thumbnail || null,
+                });
+                renderList();
+            }
+        } catch (e) {
+            toast(e.message, true);
+        } finally {
+            btns.forEach((b, i) => { b.disabled = false; b.textContent = labels[i]; });
+            // re-disable Save if there's no current
+            const savCur = pop.querySelector(".preset-save-current");
+            if (savCur && !currentName && saveCurrent) savCur.disabled = true;
+        }
+    }
+
+    const saveCurrentBtn = pop.querySelector(".preset-save-current");
+    if (saveCurrentBtn) saveCurrentBtn.onclick = () => runSave(saveCurrent);
+    pop.querySelector(".preset-save-as").onclick = () => runSave(save);
+
+    function renderList() {
+        const listEl = pop.querySelector(".preset-list");
+        if (!cachedItems.length) {
+            listEl.innerHTML = `<div class="preset-empty">No saved entries yet.</div>`;
+            return;
+        }
+        cachedItems.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+        listEl.innerHTML = "";
+        for (const it of cachedItems) {
+            listEl.appendChild(makeRow(it));
+        }
+    }
+
+    function makeRow(it) {
+        const name = (it.customMeta && it.customMeta.name) || it.id;
+        const when = it.savedAt ? new Date(it.savedAt).toLocaleString() : "";
+        const row = document.createElement("div");
+        row.className = "preset-row";
+
+        // Thumbnail column (only if the caller provides a getter).
+        if (getThumbnail) {
+            const thumb = document.createElement("div");
+            thumb.className = "preset-thumb";
+            if (it._thumb) thumb.innerHTML = it._thumb;
+            else {
+                // Lazy-load when not pre-supplied.
+                getThumbnail(it.id).then(svg => {
+                    if (svg) { it._thumb = svg; thumb.innerHTML = svg; }
+                }).catch(() => {});
+            }
+            row.appendChild(thumb);
+        }
+
+        const nameWrap = document.createElement("div");
+        nameWrap.className = "preset-name-wrap";
+        nameWrap.innerHTML = `
+            <span class="preset-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+            <span class="preset-when">${escapeHtml(when)}</span>
+        `;
+        nameWrap.querySelector(".preset-name").onclick = async () => {
+            try { await load(it.id); close(); }
+            catch (e) { toast(e.message, true); }
+        };
+        row.appendChild(nameWrap);
+
+        // Row actions: rename, duplicate, delete.
+        const actions = document.createElement("div");
+        actions.className = "preset-row-actions";
+
+        if (rename) {
+            const b = iconBtn("✎", "Rename");
+            b.onclick = async (e) => {
+                e.stopPropagation();
+                const next = prompt("Rename to:", name);
+                if (!next || next === name) return;
+                try {
+                    await rename(it.id, next);
+                    it.customMeta = { ...(it.customMeta || {}), name: next };
+                    it.savedAt = new Date().toISOString();
+                    toast(`Renamed to "${next}"`);
+                    renderList();
+                } catch (err) { toast(err.message, true); }
+            };
+            actions.appendChild(b);
+        }
+
+        if (duplicate) {
+            const b = iconBtn("⎘", "Duplicate");
+            b.onclick = async (e) => {
+                e.stopPropagation();
+                try {
+                    const r = await duplicate(it.id);
+                    if (r) {
+                        toast(`Duplicated as "${r.name}"`);
+                        cachedItems.unshift({
+                            id: r.id,
+                            customMeta: { name: r.name },
+                            savedAt: new Date().toISOString(),
+                            _thumb: r.thumbnail || it._thumb || null,
+                        });
+                        renderList();
+                    }
+                } catch (err) { toast(err.message, true); }
+            };
+            actions.appendChild(b);
+        }
+
+        const delBtn = iconBtn("×", "Delete");
+        delBtn.classList.add("preset-del");
+        delBtn.onclick = async (e) => {
+            e.stopPropagation();
+            if (!confirm(`Delete "${name}"? This can't be undone.`)) return;
+            try {
+                await del(it.id);
+                cachedItems = cachedItems.filter(x => x.id !== it.id);
+                toast(`Deleted "${name}"`);
+                renderList();
+            } catch (err) { toast(err.message, true); }
+        };
+        actions.appendChild(delBtn);
+
+        row.appendChild(actions);
+        return row;
+    }
+
+    function iconBtn(label, title) {
+        const b = document.createElement("button");
+        b.className = "preset-icon-btn";
+        b.textContent = label;
+        b.title = title;
+        return b;
+    }
+
+    async function refresh() {
+        const listEl = pop.querySelector(".preset-list");
+        listEl.textContent = "Loading…";
+        try { cachedItems = (await list()) || []; }
+        catch (e) {
+            listEl.innerHTML = `<div class="preset-empty err">${escapeHtml(e.message)}</div>`;
+            return;
+        }
+        renderList();
+    }
+
+    setTimeout(() => {
+        document.addEventListener("mousedown", onOutside, true);
+        document.addEventListener("keydown", onKey, true);
+    }, 0);
+    refresh();
+}
+
+function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}

@@ -38,6 +38,16 @@ async function lazyRender() {
 }
 
 export function cancelInteraction() {
+    const it = state.interaction;
+    // Pending rotate/scale leaves shapes in a tentative position with
+    // the HUD still up — revert them and hide the HUD before clearing.
+    if (it && (it.kind === "rotate" || it.kind === "scale")) {
+        for (let i = 0; i < it.shapes.length; i++) {
+            Object.assign(it.shapes[i], JSON.parse(JSON.stringify(it.originals[i])));
+        }
+        const hud = document.getElementById("transformHud");
+        if (hud) hud.hidden = true;
+    }
     state.interaction = null;
     removePreview();
     lazyRender();
