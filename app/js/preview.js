@@ -181,7 +181,7 @@ export function buildToolpathOverlay() {
         hitG.classList.add("tp-hit");
         if (layer.type === "fill" && layer.hitShapes) {
             for (const sh of layer.hitShapes) {
-                const el = makeHitShapeElement(sh);
+                const el = makeHitShapeElement(sh, color);
                 if (el) hitG.appendChild(el);
             }
         } else {
@@ -190,7 +190,11 @@ export function buildToolpathOverlay() {
                 const hp = document.createElementNS(SVG_NS, "polyline");
                 hp.setAttribute("points", stroke.map(p => `${p[0]},${p[1]}`).join(" "));
                 hp.setAttribute("fill", "none");
-                hp.setAttribute("stroke", "transparent");
+                // Painted in the toolpath colour but invisible until hover
+                // (CSS fades stroke-opacity in). Still pickable — a paint
+                // at opacity 0 keeps pointer-events:stroke working.
+                hp.setAttribute("stroke", color);
+                hp.setAttribute("stroke-opacity", "0");
                 hp.setAttribute("stroke-width", "3");
                 hp.setAttribute("vector-effect", "non-scaling-stroke");
                 hp.style.pointerEvents = "stroke";
@@ -328,7 +332,7 @@ export function buildSimulationOverlay() {
         hitG.classList.add("tp-hit");
         if (layer.type === "fill" && layer.hitShapes) {
             for (const sh of layer.hitShapes) {
-                const el = makeHitShapeElement(sh);
+                const el = makeHitShapeElement(sh, color);
                 if (el) hitG.appendChild(el);
             }
         } else {
@@ -337,7 +341,8 @@ export function buildSimulationOverlay() {
                 const hp = document.createElementNS(SVG_NS, "polyline");
                 hp.setAttribute("points", stroke.map(p => `${p[0]},${p[1]}`).join(" "));
                 hp.setAttribute("fill", "none");
-                hp.setAttribute("stroke", "transparent");
+                hp.setAttribute("stroke", color);
+                hp.setAttribute("stroke-opacity", "0");
                 hp.setAttribute("stroke-width", Math.max(3, penWidth + 1));
                 hp.setAttribute("vector-effect", "non-scaling-stroke");
                 hp.style.pointerEvents = "stroke";
@@ -392,7 +397,7 @@ export function buildSimulationOverlay() {
 
 /** Build an invisible "hit" SVG element for a shape — used so clicks
  *  on a fill toolpath's area resolve to that toolpath. */
-function makeHitShapeElement(shape) {
+function makeHitShapeElement(shape, color = "transparent") {
     let el;
     switch (shape.type) {
         case "line":
@@ -400,7 +405,9 @@ function makeHitShapeElement(shape) {
             el.setAttribute("x1", shape.x1); el.setAttribute("y1", shape.y1);
             el.setAttribute("x2", shape.x2); el.setAttribute("y2", shape.y2);
             // A line has no interior — fall back to stroke hit testing.
-            el.setAttribute("stroke", "transparent");
+            // Coloured but invisible until hover (see area-shape note below).
+            el.setAttribute("stroke", color);
+            el.setAttribute("stroke-opacity", "0");
             el.setAttribute("stroke-width", "3");
             el.setAttribute("fill", "none");
             el.setAttribute("vector-effect", "non-scaling-stroke");
@@ -428,7 +435,11 @@ function makeHitShapeElement(shape) {
         default:
             return null;
     }
-    el.setAttribute("fill", "transparent");
+    // Painted in the toolpath colour but invisible until hover, when CSS
+    // fades fill-opacity in as the tint feedback. fill-opacity 0 still
+    // hit-tests, so the interior stays pickable.
+    el.setAttribute("fill", color);
+    el.setAttribute("fill-opacity", "0");
     el.setAttribute("stroke", "none");
     el.style.pointerEvents = "fill";
     el.style.cursor = "pointer";

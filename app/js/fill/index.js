@@ -7,6 +7,7 @@ import * as crosshatch from "./crosshatch.js";
 import * as zigzag from "./zigzag.js";
 import * as concentric from "./concentric.js";
 import * as stipple from "./stipple.js";
+import * as dots from "./dots.js";
 
 /** Registered fill patterns, keyed by id. */
 export const PATTERNS = {
@@ -15,6 +16,7 @@ export const PATTERNS = {
     zigzag,
     concentric,
     stipple,
+    dots,
 };
 
 /** Pattern ids in display order. "none" is added at the head by the UI. */
@@ -27,8 +29,9 @@ export const PATTERN_OPTIONS = {
     hatch:      ["angle", "spacing"],
     crosshatch: ["angle", "spacing"],
     zigzag:     ["angle", "spacing"],
-    concentric: ["spacing"],
+    concentric: ["spacing", "offset"],
     stipple:    ["spacing"],
+    dots:       ["spacing"],
 };
 
 /** Return the export-time shape list for `layer`: the user's drawn shapes
@@ -44,6 +47,7 @@ export function expandLayerWithFill(layer) {
     const opts = {
         angle: +fill.angle || 0,
         spacing: Math.max(0.1, +fill.spacing || 2),
+        offset: Math.max(0, +fill.offset || 0),
     };
     for (const shape of layer.shapes) {
         for (const extra of pattern.generate(shape, opts)) {

@@ -114,7 +114,8 @@ export function makeToolpath(name, type, targetArtLayerId = null) {
         fill: {
             pattern: type === "fill" ? "hatch" : "none",
             angle: 45,
-            spacing: 2.0
+            spacing: 2.0,
+            offset: 0
         },
     };
 }

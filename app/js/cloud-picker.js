@@ -122,6 +122,13 @@ export async function openPicker(anchorEl, opts) {
         const when = it.savedAt ? new Date(it.savedAt).toLocaleString() : "";
         const row = document.createElement("div");
         row.className = "preset-row";
+        row.style.cursor = "pointer";
+        // Clicking anywhere on the row loads it. The action buttons below
+        // stopPropagation so they don't also trigger a load.
+        row.onclick = async () => {
+            try { await load(it.id); close(); }
+            catch (e) { toast(e.message, true); }
+        };
 
         // Thumbnail column (only if the caller provides a getter).
         if (getThumbnail) {
@@ -143,10 +150,6 @@ export async function openPicker(anchorEl, opts) {
             <span class="preset-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
             <span class="preset-when">${escapeHtml(when)}</span>
         `;
-        nameWrap.querySelector(".preset-name").onclick = async () => {
-            try { await load(it.id); close(); }
-            catch (e) { toast(e.message, true); }
-        };
         row.appendChild(nameWrap);
 
         // Row actions: rename, duplicate, delete.

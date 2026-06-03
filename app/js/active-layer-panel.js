@@ -12,12 +12,19 @@ import { snapshot } from "./history.js";
 // Friendly labels + step/min/max for each numeric option.
 const FIELD_META = {
     spacing:     { label: "Spacing", unit: "mm",  min: 0.2, max: 20,  step: 0.1 },
+    offset:      { label: "Offset",  unit: "mm",  min: 0,   max: 20,  step: 0.1 },
     angle:       { label: "Angle",   unit: "°",   min: 0,   max: 180, step: 1 },
     dash_length: { label: "Dash",    unit: "mm",  min: 0.2, max: 20,  step: 0.1 },
     dash_gap:    { label: "Gap",     unit: "mm",  min: 0.2, max: 20,  step: 0.1 },
     amplitude:   { label: "Amplitude", unit: "mm", min: 0.1, max: 5,  step: 0.1 },
     frequency:   { label: "Frequency", unit: "/mm", min: 0.1, max: 5, step: 0.1 },
 };
+
+// Default fill spacing (mm) per pattern. Concentric defaults denser so its
+// nested rings don't look sparse out of the box; everything else uses 2.
+const GENERIC_FILL_SPACING = 2;
+const DEFAULT_FILL_SPACING = { concentric: 1.2 };
+const defaultSpacingFor = (p) => DEFAULT_FILL_SPACING[p] ?? GENERIC_FILL_SPACING;
 
 let triggerRerender = () => {};
 export function installActiveLayerPanel(onChange) {
@@ -93,7 +100,7 @@ export function renderActiveLayerPanel() {
                 triggerRerender();
             }));
         root.appendChild(selectField("Style",
-            commonValue(outs, t => t.outline.style),
+            commonExact(outs, t => t.outline.style),
             OUTLINE_STYLES, (v) => {
                 snapshot();
                 for (const t of resolveSameType()) t.outline.style = v;
@@ -116,10 +123,18 @@ export function renderActiveLayerPanel() {
         const fills = sameTypeTargets;
         root.appendChild(subhead(isBulk ? `Fill (${fills.length})` : "Fill"));
         root.appendChild(selectField("Pattern",
-            commonValue(fills, t => t.fill.pattern),
+            commonExact(fills, t => t.fill.pattern),
             FILL_PATTERNS.filter(p => p !== "none"), (v) => {
                 snapshot();
-                for (const t of resolveSameType()) t.fill.pattern = v;
+                for (const t of resolveSameType()) {
+                    // Adopt the new pattern's default spacing only when the
+                    // user hadn't moved it off the old pattern's default, so
+                    // deliberate values survive a pattern switch.
+                    if (t.fill.spacing === defaultSpacingFor(t.fill.pattern)) {
+                        t.fill.spacing = defaultSpacingFor(v);
+                    }
+                    t.fill.pattern = v;
+                }
                 renderActiveLayerPanel();
                 triggerRerender();
             }));
@@ -149,6 +164,18 @@ function commonValue(targets, accessor) {
     const first = accessor(targets[0]);
     for (let i = 1; i < targets.length; i++) {
         if (accessor(targets[i]) !== first) return first;
+    }
+    return first;
+}
+
+/** Like commonValue, but returns undefined when the bulk set disagrees.
+ *  Used for <select> fields so a mixed selection shows a "— mixed —"
+ *  placeholder rather than a definite (and re-selectable-as-no-op) value. */
+function commonExact(targets, accessor) {
+    if (!targets.length) return undefined;
+    const first = accessor(targets[0]);
+    for (let i = 1; i < targets.length; i++) {
+        if (accessor(targets[i]) !== first) return undefined;
     }
     return first;
 }
@@ -207,14 +234,27 @@ function selectField(labelText, value, options, onChange) {
     const label = document.createElement("label");
     label.textContent = labelText;
     const select = document.createElement("select");
+    // When the bulk selection disagrees, `value` won't be one of the
+    // options. Show a leading "— mixed —" entry as the current value so
+    // that picking ANY real option fires a change event — otherwise
+    // re-selecting the already-displayed value is a no-op and the
+    // mismatched toolpaths never update.
+    const isMixed = !options.includes(value);
+    if (isMixed) {
+        const o = document.createElement("option");
+        o.value = "";
+        o.textContent = "— mixed —";
+        o.selected = true;
+        select.appendChild(o);
+    }
     for (const opt of options) {
         const o = document.createElement("option");
         o.value = opt;
         o.textContent = opt;
-        if (opt === value) o.selected = true;
+        if (!isMixed && opt === value) o.selected = true;
         select.appendChild(o);
     }
-    select.onchange = () => onChange(select.value);
+    select.onchange = () => { if (select.value !== "") onChange(select.value); };
     wrap.append(label, select);
     return wrap;
 }
