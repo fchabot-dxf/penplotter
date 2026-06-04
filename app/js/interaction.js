@@ -1,7 +1,7 @@
 // Mouse handlers on the canvas. Dispatches by current tool.
 // All shape geometry changes happen here; commits push onto the active layer.
 
-import { state, uid, activeArtLayer, findShape } from "./state.js";
+import { state, uid, activeArtLayer, findShape, remapToolpathTargets } from "./state.js";
 import { canvas, coordsEl, SVG_NS, toast } from "./dom.js";
 import { screenToSvg, applyViewport } from "./viewport.js";
 import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, combinedBounds, shapeBounds, getNodes, setNodes } from "./shapes.js";
@@ -698,6 +698,7 @@ function doScissors(e, p) {
         return sh;
     });
     layer.shapes.splice(idx, 1, ...made);
+    remapToolpathTargets(target.id, made.map(s => s.id)); // keep toolpaths attached
     state.selectedShapeIds = new Set(made.map(s => s.id));
     render();
 }

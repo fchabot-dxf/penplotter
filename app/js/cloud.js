@@ -20,7 +20,7 @@
 //
 // See `cloud-config.local.example.js` for the full step-by-step.
 
-import { WORKER_URL, API_KEY } from "./cloud-config.local.js";
+import { WORKER_URL as DEFAULT_URL, API_KEY as DEFAULT_KEY } from "./cloud-config.js";
 
 // Routes used (see cloud/worker.js):
 //   GET    /palettes              → [{ id, customMeta.name, savedAt, size }]
@@ -32,12 +32,33 @@ import { WORKER_URL, API_KEY } from "./cloud-config.local.js";
 //   GET    /projects/:id          → { name, project }
 //   DELETE /projects/:id
 
+// Runtime overrides (Worker URL + API key) live in localStorage so the
+// git-deployed site never carries the secret. The committed defaults seed
+// the URL; the key is entered once in the Settings panel.
+const LS_KEY = "penplotter.cloud";
+function readOverride() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; }
+    catch { return {}; }
+}
+
 export function getConfig() {
-    return { url: WORKER_URL.replace(/\/+$/, ""), apiKey: API_KEY };
+    const o = readOverride();
+    const url = String(o.url || DEFAULT_URL || "").replace(/\/+$/, "");
+    const apiKey = o.apiKey || DEFAULT_KEY || "";
+    return { url, apiKey };
+}
+
+/** Persist a Worker URL / API key override (from the Settings panel). */
+export function setConfig({ url, apiKey } = {}) {
+    const o = readOverride();
+    if (url !== undefined) o.url = url;
+    if (apiKey !== undefined) o.apiKey = apiKey;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(o)); } catch { /* ignore */ }
 }
 
 export function isConfigured() {
-    return !!(WORKER_URL && API_KEY && !WORKER_URL.includes("your-subdomain"));
+    const { url, apiKey } = getConfig();
+    return !!(url && apiKey && !url.includes("your-subdomain"));
 }
 
 async function call(method, path, body) {

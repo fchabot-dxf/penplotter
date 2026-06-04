@@ -1,6 +1,6 @@
 // Layer panel UI on the left sidebar. Renders the design/art layers list.
 
-import { state, makeArtLayer, uid } from "./state.js";
+import { state, makeArtLayer, uid, remapToolpathTargets } from "./state.js";
 import { layersEl, $, toast } from "./dom.js";
 import { render } from "./render.js";
 import { snapshot } from "./history.js";
@@ -342,6 +342,7 @@ async function mergeSelectedShapes() {
         if (sel[0][k] !== undefined) merged[k] = sel[0][k];
     }
     if (mode === "replace") {
+        for (const s of sel) remapToolpathTargets(s.id, [merged.id]); // toolpaths follow the merge
         for (const l of state.artLayers) l.shapes = l.shapes.filter(s => !ids.has(s.id));
     }
     targetLayer.shapes.push(merged);

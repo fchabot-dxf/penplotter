@@ -172,6 +172,21 @@ export function orderedToolpaths() {
     return out;
 }
 
+/** When a shape is replaced by editing (scissors split, merge, …), re-point
+ *  any toolpath that targeted the old shape id at the new id(s), so the
+ *  toolpath's preview/output follows the edit instead of going blank. */
+export function remapToolpathTargets(oldId, newIds) {
+    for (const tp of state.toolpaths) {
+        if (!tp.targetShapeIds || !tp.targetShapeIds.includes(oldId)) continue;
+        const out = [];
+        for (const id of tp.targetShapeIds) {
+            const repl = id === oldId ? newIds : [id];
+            for (const n of repl) if (n && !out.includes(n)) out.push(n);
+        }
+        tp.targetShapeIds = out;
+    }
+}
+
 export function findShape(sid) {
     for (const l of state.artLayers) {
         const s = l.shapes.find(s => s.id === sid);
