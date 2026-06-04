@@ -3,12 +3,13 @@
 // it. Each toolpath references a plot color by id, so renames/recolors
 // here cascade to the Toolpath Layers list, toolpath preview, etc.
 
-import { state, makePlotColor } from "./state.js";
+import { state, makePlotColor, DEFAULT_PEN_WIDTH } from "./state.js";
 import { $, toast } from "./dom.js";
 import { snapshot } from "./history.js";
 import { render } from "./render.js";
 import * as cloud from "./cloud.js";
 import { openPicker } from "./cloud-picker.js";
+import { uiPrompt, uiChoose } from "./ui-dialog.js";
 
 export function installPlotColorsPanel() {
     const addBtn = $("#addPlotColor");
@@ -17,20 +18,30 @@ export function installPlotColorsPanel() {
         state.plotColors.push(makePlotColor(`pen ${state.plotColors.length + 1}`, "#111111"));
         render();
     };
-    // Single "Presets…" button — opens a popup with save / list / delete.
-    // Don't touch textContent; the HTML already has the label we want.
-    const presetBtn = $("#palettePresetBtn");
-    if (presetBtn) presetBtn.onclick = (e) => openPalettePicker(e.currentTarget);
+    // Save = quick named save of the current pens. Load = the rich picker
+    // popover (clickable list + delete/rename/duplicate), same UX as the
+    // project picker. (The HTML buttons were previously left unwired.)
+    const saveBtn = $("#savePalette");
+    if (saveBtn) saveBtn.onclick = onSavePalette;
+    const loadBtn = $("#loadPalette");
+    if (loadBtn) loadBtn.onclick = (e) => openPalettePicker(e.currentTarget);
 }
 
 function openPalettePicker(anchor) {
     openPicker(anchor, {
+        modal: true,
         title: "Palette presets",
         saveLbl: "Save as new",
         list: () => cloud.listPalettes(),
+        // Show each saved palette's pen colours as an inline swatch strip.
+        // The list API only returns names, so lazily fetch per row.
+        getSwatches: async (id) => {
+            const obj = await cloud.loadPalette(id);
+            return (obj && Array.isArray(obj.palette)) ? obj.palette.map(pc => pc && pc.color) : [];
+        },
         save: async () => {
             if (!state.plotColors.length) { toast("No pens to save.", true); return null; }
-            const name = prompt("Palette name:", suggestPaletteName());
+            const name = await uiPrompt("Palette name:", suggestPaletteName());
             if (!name) return null;
             const payload = state.plotColors.map(pc => ({ ...pc }));
             return cloud.savePalette(name, payload);
@@ -57,42 +68,12 @@ function openPalettePicker(anchor) {
 async function onSavePalette() {
     if (!cloud.isConfigured()) { toast("Set Worker URL + API key in Settings first.", true); return; }
     if (!state.plotColors.length) { toast("No pens to save.", true); return; }
-    const name = prompt("Palette name:", suggestPaletteName());
+    const name = await uiPrompt("Palette name:", suggestPaletteName());
     if (!name) return;
     try {
         const payload = state.plotColors.map(pc => ({ ...pc }));
         const r = await cloud.savePalette(name, payload);
         toast(`Saved palette "${r.name}"`);
-    } catch (e) {
-        toast(e.message, true);
-    }
-}
-
-/** Prompt the user with a list of saved palettes and load whichever
- *  they pick. Loaded palette REPLACES the current one — toolpaths whose
- *  plotColorId no longer exists in the new palette get reassigned to
- *  the nearest pen so nothing ends up unlinked. */
-async function onLoadPalette() {
-    if (!cloud.isConfigured()) { toast("Set Worker URL + API key in Settings first.", true); return; }
-    let items;
-    try { items = await cloud.listPalettes(); } catch (e) { toast(e.message, true); return; }
-    if (!items || !items.length) { toast("No saved palettes yet.", true); return; }
-
-    items.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
-    const lines = items.map((it, i) => {
-        const n = (it.customMeta && it.customMeta.name) || it.id;
-        const t = it.savedAt ? ` (${new Date(it.savedAt).toLocaleDateString()})` : "";
-        return `${i + 1}. ${n}${t}`;
-    }).join("\n");
-    const pick = prompt(`Saved palettes — type a number to load:\n\n${lines}`, "1");
-    if (!pick) return;
-    const idx = (parseInt(pick, 10) || 0) - 1;
-    if (idx < 0 || idx >= items.length) { toast("Invalid selection.", true); return; }
-    try {
-        const obj = await cloud.loadPalette(items[idx].id);
-        if (!obj || !Array.isArray(obj.palette)) { toast("Palette payload empty.", true); return; }
-        applyPalette(obj.palette);
-        toast(`Loaded palette "${obj.name || items[idx].customMeta?.name || ""}"`);
     } catch (e) {
         toast(e.message, true);
     }
@@ -175,6 +156,20 @@ function plotColorRow(pc) {
         render();
     };
 
+    // Pen tip width (mm) — the pen owns the width; all its toolpaths draw
+    // at it, and it's saved with the palette preset.
+    const width = document.createElement("input");
+    width.className = "pc-width";
+    width.type = "number";
+    width.min = "0.05"; width.max = "5"; width.step = "0.05";
+    width.value = pc.width != null ? pc.width : DEFAULT_PEN_WIDTH;
+    width.title = "Pen width (mm) — applies to every toolpath using this pen";
+    width.onchange = () => {
+        snapshot();
+        pc.width = Math.max(0.01, +width.value || DEFAULT_PEN_WIDTH);
+        render();
+    };
+
     const badge = document.createElement("span");
     badge.className = "pc-badge";
     badge.textContent = usedBy;
@@ -184,7 +179,7 @@ function plotColorRow(pc) {
     del.className = "pc-del";
     del.textContent = "×";
     del.title = "Delete pen — toolpaths get reassigned to the nearest remaining pen";
-    del.onclick = (e) => {
+    del.onclick = async (e) => {
         e.stopPropagation();
         const remaining = state.plotColors.filter(p => p.id !== pc.id);
         if (remaining.length === 0) {
@@ -193,8 +188,14 @@ function plotColorRow(pc) {
         }
         let target = null;
         if (usedBy > 0) {
-            target = nearestPen(pc.color, remaining);
-            if (!confirm(`${usedBy} toolpath${usedBy === 1 ? "" : "s"} will be reassigned to "${target.name}" (closest color). Continue?`)) return;
+            const closest = nearestPen(pc.color, remaining);
+            const choiceId = await uiChoose(
+                `Delete "${pc.name}". ${usedBy} toolpath${usedBy === 1 ? "" : "s"} use it — reassign to which pen?`,
+                remaining.map(p => ({ value: p.id, label: p.name + (p.id === closest.id ? "  (closest)" : ""), color: p.color })),
+                { defaultValue: closest.id, okLabel: "Delete & reassign" },
+            );
+            if (!choiceId) return;
+            target = remaining.find(p => p.id === choiceId) || closest;
         }
         snapshot();
         if (target) {
@@ -206,7 +207,7 @@ function plotColorRow(pc) {
         render();
     };
 
-    row.append(swatch, name, badge, del);
+    row.append(swatch, name, width, badge, del);
     return row;
 }
 

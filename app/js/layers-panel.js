@@ -1,9 +1,12 @@
 // Layer panel UI on the left sidebar. Renders the design/art layers list.
 
-import { state, makeArtLayer } from "./state.js";
+import { state, makeArtLayer, uid } from "./state.js";
 import { layersEl, $, toast } from "./dom.js";
 import { render } from "./render.js";
 import { snapshot } from "./history.js";
+import { closedPolygonFor } from "./fill/utils.js";
+import { unionPolygons } from "./clip.js";
+import { uiConfirm } from "./ui-dialog.js";
 
 // group name → boolean (collapsed?)
 const collapsed = new Map();
@@ -286,12 +289,51 @@ export function installLayerButtons() {
         state.activeArtLayerId = layer.id;
         render();
     };
-    $("#clearLayer").onclick = () => {
+    $("#clearLayer").onclick = async () => {
         const l = state.artLayers.find(l => l.id === state.activeArtLayerId);
         if (!l || !l.shapes.length) return;
-        if (!confirm(`Clear all shapes in "${l.name}"?`)) return;
+        if (!await uiConfirm(`Clear all shapes in "${l.name}"?`)) return;
         snapshot();
         l.shapes = [];
         render();
     };
+    const mergeBtn = $("#mergeShapes");
+    if (mergeBtn) mergeBtn.onclick = mergeSelectedShapes;
+}
+
+/** Boolean-union the selected shapes into a single path (their combined
+ *  outline) via Clipper. The result lands in the layer of the first
+ *  selected shape and inherits its fill/stroke styling. */
+function mergeSelectedShapes() {
+    const ids = state.selectedShapeIds;
+    if (!ids || ids.size < 2) { toast("Select 2 or more shapes to merge.", true); return; }
+
+    const sel = [];
+    let targetLayer = null;
+    for (const l of state.artLayers) {
+        for (const s of l.shapes) {
+            if (ids.has(s.id)) { sel.push(s); if (!targetLayer) targetLayer = l; }
+        }
+    }
+    if (sel.length < 2) { toast("Select 2 or more shapes to merge.", true); return; }
+
+    const polys = sel.map(closedPolygonFor).filter(p => p && p.length >= 4);
+    if (polys.length < 2) { toast("Merge needs at least 2 closed shapes.", true); return; }
+
+    const rings = unionPolygons(polys);
+    if (!rings.length) { toast("Merge produced no geometry.", true); return; }
+
+    snapshot();
+    const d = rings
+        .map(r => "M " + r.map(p => `${p[0].toFixed(3)},${p[1].toFixed(3)}`).join(" L ") + " Z")
+        .join(" ");
+    const merged = { id: uid("shape"), type: "path", d };
+    for (const k of ["_fill", "_stroke", "_strokeWidth"]) {
+        if (sel[0][k] !== undefined) merged[k] = sel[0][k];
+    }
+    for (const l of state.artLayers) l.shapes = l.shapes.filter(s => !ids.has(s.id));
+    targetLayer.shapes.push(merged);
+    state.selectedShapeIds = new Set([merged.id]);
+    render();
+    toast(`Merged ${sel.length} shapes`);
 }

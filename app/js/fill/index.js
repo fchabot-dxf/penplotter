@@ -47,7 +47,7 @@ export function expandLayerWithFill(layer) {
     const opts = {
         angle: +fill.angle || 0,
         spacing: Math.max(0.1, +fill.spacing || 2),
-        offset: Math.max(0, +fill.offset || 0),
+        offset: +fill.offset || 0,
     };
     for (const shape of layer.shapes) {
         for (const extra of pattern.generate(shape, opts)) {

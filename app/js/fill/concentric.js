@@ -12,20 +12,20 @@ import { offsetRings } from "../clip.js";
 
 const MAX_ITERATIONS = 500;
 
-// `offset` is an inward margin before the first ring: ring i sits at
-// offset + i·spacing from the edge. Default 0 keeps the first ring one
-// spacing in from the boundary.
+// `offset` sets where the first ring sits relative to the shape edge:
+// ring i is inset by offset + i·spacing, starting at i = 0. So offset 0
+// draws the first ring ON the outline; a negative offset starts the rings
+// outside it (overdraw/bleed); a positive offset insets them.
 export function generate(shape, { spacing = 2, offset = 0 } = {}) {
     spacing = Math.max(0.1, spacing);
-    offset = Math.max(0, offset);
 
     if (shape.type === "rect") {
         const out = [];
-        for (let i = 1; i <= MAX_ITERATIONS; i++) {
+        for (let i = 0; i <= MAX_ITERATIONS; i++) {
             const inset = offset + i * spacing;
             const nw = shape.w - inset * 2;
             const nh = shape.h - inset * 2;
-            if (nw <= 0 || nh <= 0) break;
+            if (nw <= 0 || nh <= 0) { if (inset > 0) break; else continue; }
             const x = shape.x + inset, y = shape.y + inset;
             out.push(makePolylineShape([
                 [x, y], [x + nw, y],
@@ -38,7 +38,7 @@ export function generate(shape, { spacing = 2, offset = 0 } = {}) {
 
     if (shape.type === "ellipse") {
         const out = [];
-        for (let i = 1; i <= MAX_ITERATIONS; i++) {
+        for (let i = 0; i <= MAX_ITERATIONS; i++) {
             const rx = shape.rx - (offset + i * spacing);
             const ry = shape.ry - (offset + i * spacing);
             if (rx <= spacing * 0.5 || ry <= spacing * 0.5) break;

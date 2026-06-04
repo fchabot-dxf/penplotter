@@ -69,8 +69,19 @@ export function makeArtLayer(name, color = "#111111") {
     };
 }
 
-export function makePlotColor(name, color) {
-    return { id: uid("pen"), name, color };
+export function makePlotColor(name, color, width = DEFAULT_PEN_WIDTH) {
+    return { id: uid("pen"), name, color, width };
+}
+
+/** Effective pen width (mm) for a toolpath — the width of its pen. Pen
+ *  width is the single source of truth. Falls back to a toolpath's legacy
+ *  per-toolpath width (older projects/pens saved before pens had a width),
+ *  then the default. */
+export function penWidthFor(tp) {
+    if (!tp) return DEFAULT_PEN_WIDTH;
+    const pen = state.plotColors.find(p => p.id === tp.plotColorId);
+    if (pen && pen.width != null) return pen.width;
+    return tp.penWidth != null ? tp.penWidth : DEFAULT_PEN_WIDTH;
 }
 
 /** Look up an existing plot color by exact hex, or create one. Returns
@@ -137,6 +148,28 @@ export function activeArtLayer() {
 
 export function activeToolpath() {
     return state.toolpaths.find(tp => tp.id === state.activeToolpathId) || null;
+}
+
+/** Toolpaths in Toolpath-Operations-panel order, which is also the order
+ *  they're drawn: pen folders (palette order), outline ops before fill ops
+ *  within each pen, preserving array order within a role. Single source of
+ *  truth so the simulation z-stacks paths by completion order — earlier
+ *  ops underneath, later ops on top. */
+export function orderedToolpaths() {
+    const byPen = new Map();
+    for (const tp of state.toolpaths) {
+        const penId = tp.plotColorId || "__none__";
+        if (!byPen.has(penId)) byPen.set(penId, { outline: [], fill: [] });
+        byPen.get(penId)[tp.type === "fill" ? "fill" : "outline"].push(tp);
+    }
+    const penIds = state.plotColors.map(p => p.id).filter(id => byPen.has(id));
+    if (byPen.has("__none__")) penIds.push("__none__");
+    const out = [];
+    for (const penId of penIds) {
+        const b = byPen.get(penId);
+        out.push(...b.outline, ...b.fill);
+    }
+    return out;
 }
 
 export function findShape(sid) {

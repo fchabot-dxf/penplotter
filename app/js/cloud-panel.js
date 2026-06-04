@@ -16,6 +16,7 @@ import { fitViewport } from "./viewport.js";
 import { snapshot } from "./history.js";
 import * as cloud from "./cloud.js";
 import { openPicker } from "./cloud-picker.js";
+import { uiPrompt, uiConfirm } from "./ui-dialog.js";
 import { loadDefaults } from "./settings.js";
 
 export function installCloudPanel() {
@@ -38,6 +39,7 @@ export function installCloudPanel() {
 
 function openProjectPicker(anchor) {
     openPicker(anchor, {
+        modal: true,
         title: "Projects",
         saveLbl: "Save as new",
         currentName: state.currentProject.name,
@@ -45,7 +47,7 @@ function openProjectPicker(anchor) {
 
         // "Save as new" — always a fresh entry. Becomes the current one.
         save: async () => {
-            const name = prompt("Project name:", suggestProjectName());
+            const name = await uiPrompt("Project name:", suggestProjectName());
             if (!name) return null;
             const payload = snapshotProject();
             const r = await cloud.saveProject(name, payload);
@@ -108,7 +110,7 @@ function openProjectPicker(anchor) {
 
 async function onSaveProject() {
     if (!cloud.isConfigured()) { toast("Set Worker URL + API key first.", true); return; }
-    const name = prompt("Project name:", suggestProjectName());
+    const name = await uiPrompt("Project name:", suggestProjectName());
     if (!name) return;
     try {
         const payload = snapshotProject();
@@ -121,7 +123,7 @@ async function onSaveProject() {
 }
 
 async function onLoadProject(id, name) {
-    if (!confirm(`Open project "${name}"? Unsaved changes will be lost.`)) return;
+    if (!await uiConfirm(`Open project "${name}"? Unsaved changes will be lost.`)) return;
     try {
         const obj = await cloud.loadProject(id);
         if (!obj || !obj.project) { toast("Project payload empty.", true); return; }
@@ -133,7 +135,7 @@ async function onLoadProject(id, name) {
 }
 
 async function onDeleteProject(id, name) {
-    if (!confirm(`Delete cloud project "${name}"? This can't be undone.`)) return;
+    if (!await uiConfirm(`Delete cloud project "${name}"? This can't be undone.`)) return;
     try {
         await cloud.deleteProject(id);
         toast(`Deleted "${name}"`);

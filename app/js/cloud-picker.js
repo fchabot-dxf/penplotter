@@ -17,6 +17,7 @@
 //   title, saveLbl          → strings
 
 import { toast } from "./dom.js";
+import { uiPrompt, uiConfirm } from "./ui-dialog.js";
 
 let openEl = null;
 
@@ -40,21 +41,19 @@ function onKey(e) {
 export async function openPicker(anchorEl, opts) {
     const {
         list, save, saveCurrent, load, del,
-        rename, duplicate, getThumbnail,
-        currentName, title, saveLbl,
+        rename, duplicate, getThumbnail, getSwatches,
+        currentName, title, saveLbl, modal,
     } = opts;
 
     close();
-    const rect = anchorEl.getBoundingClientRect();
     const pop = document.createElement("div");
     pop.className = "preset-popover";
     if (getThumbnail) pop.classList.add("has-thumbs");
-    pop.style.left = `${Math.max(8, rect.left)}px`;
-    pop.style.top  = `${rect.bottom + 4}px`;
 
-    const headerLine = currentName
-        ? `<div class="preset-header"><span>${escapeHtml(title)}</span><span class="preset-current">${escapeHtml(currentName)}</span></div>`
-        : `<div class="preset-header">${escapeHtml(title)}</div>`;
+    const currentSpan = currentName ? `<span class="preset-current">${escapeHtml(currentName)}</span>` : "";
+    const closeBtn = modal ? `<button class="preset-close" title="Close">✕</button>` : "";
+    const headerLine =
+        `<div class="preset-header"><span>${escapeHtml(title)}</span>${currentSpan}${closeBtn}</div>`;
     pop.innerHTML = `
         ${headerLine}
         <div class="preset-actions">
@@ -63,8 +62,26 @@ export async function openPicker(anchorEl, opts) {
         </div>
         <div class="preset-list">Loading…</div>
     `;
-    document.body.appendChild(pop);
-    openEl = pop;
+
+    if (modal) {
+        // Centered dialog over a dimming backdrop. Clicking the backdrop or
+        // the ✕ closes; Escape closes via onKey.
+        pop.classList.add("preset-modal");
+        const backdrop = document.createElement("div");
+        backdrop.className = "preset-modal-backdrop";
+        backdrop.appendChild(pop);
+        // Clicking the backdrop (outside the dialog), the ✕, or Escape closes.
+        backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) close(); });
+        pop.querySelector(".preset-close").onclick = close;
+        document.body.appendChild(backdrop);
+        openEl = backdrop;
+    } else {
+        const rect = anchorEl.getBoundingClientRect();
+        pop.style.left = `${Math.max(8, rect.left)}px`;
+        pop.style.top  = `${rect.bottom + 4}px`;
+        document.body.appendChild(pop);
+        openEl = pop;
+    }
 
     // Local cache so UI reacts instantly — KV's list() is eventually
     // consistent and a fresh re-list won't reflect a brand-new write
@@ -150,6 +167,25 @@ export async function openPicker(anchorEl, opts) {
             <span class="preset-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
             <span class="preset-when">${escapeHtml(when)}</span>
         `;
+        // Inline horizontal swatch strip (e.g. a palette's pen colours),
+        // lazily loaded the first time the row renders.
+        if (getSwatches) {
+            const strip = document.createElement("div");
+            strip.className = "preset-swatches";
+            const paint = (colors) => {
+                strip.innerHTML = "";
+                for (const c of colors || []) {
+                    const safe = String(c || "").replace(/[^#0-9a-zA-Z(),.% ]/g, "");
+                    if (!safe) continue;
+                    const sw = document.createElement("span");
+                    sw.style.background = safe;
+                    strip.appendChild(sw);
+                }
+            };
+            if (it._swatches) paint(it._swatches);
+            else getSwatches(it.id).then(cols => { it._swatches = cols; paint(cols); }).catch(() => {});
+            nameWrap.appendChild(strip);
+        }
         row.appendChild(nameWrap);
 
         // Row actions: rename, duplicate, delete.
@@ -160,7 +196,7 @@ export async function openPicker(anchorEl, opts) {
             const b = iconBtn("✎", "Rename");
             b.onclick = async (e) => {
                 e.stopPropagation();
-                const next = prompt("Rename to:", name);
+                const next = await uiPrompt("Rename to:", name);
                 if (!next || next === name) return;
                 try {
                     await rename(it.id, next);
@@ -198,7 +234,7 @@ export async function openPicker(anchorEl, opts) {
         delBtn.classList.add("preset-del");
         delBtn.onclick = async (e) => {
             e.stopPropagation();
-            if (!confirm(`Delete "${name}"? This can't be undone.`)) return;
+            if (!await uiConfirm(`Delete "${name}"? This can't be undone.`)) return;
             try {
                 await del(it.id);
                 cachedItems = cachedItems.filter(x => x.id !== it.id);

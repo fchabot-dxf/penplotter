@@ -100,8 +100,13 @@ html, body {
 
 /* Plot Colors panel */
 .pc-row {
-    display: grid; grid-template-columns: 22px 1fr 28px 16px; gap: 6px;
+    display: grid; grid-template-columns: 22px 1fr 52px 28px 16px; gap: 6px;
     align-items: center; padding: 4px 8px; border-radius: 3px; margin-bottom: 2px;
+}
+.pc-width {
+    width: 100%; box-sizing: border-box; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 3px; color: var(--text);
+    font-size: 11px; padding: 2px 4px; font-variant-numeric: tabular-nums;
 }
 .pc-row:hover { background: var(--panel-2); }
 .pc-swatch {
@@ -267,6 +272,11 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
     color: var(--text); cursor: pointer; font-size: 13px;
 }
 .preset-popover .preset-name:hover { color: var(--accent-hi); }
+.preset-popover .preset-swatches { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.preset-popover .preset-swatches span {
+    width: 14px; height: 14px; border-radius: 2px;
+    border: 1px solid rgba(0,0,0,.35); box-sizing: border-box;
+}
 .preset-popover .preset-when {
     color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums;
 }
@@ -282,6 +292,49 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
 .preset-popover .preset-del:hover { color: var(--danger); border-color: var(--danger); }
 .preset-popover .preset-empty { color: var(--text-dim); font-size: 11px; padding: 12px; text-align: center; }
 .preset-popover .preset-empty.err { color: #ffb0b6; }
+/* Modal variant: centered dialog over a dimming backdrop. */
+.preset-modal-backdrop {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center;
+}
+.preset-popover.preset-modal {
+    position: static; min-width: 0; width: min(620px, 92vw); max-height: 80vh;
+}
+.preset-popover .preset-close {
+    margin-left: auto; background: none; border: none; cursor: pointer;
+    color: var(--text-dim); font-size: 13px; line-height: 1; padding: 0 2px;
+}
+.preset-popover .preset-close:hover { color: var(--text); }
+/* In-app prompt/confirm dialogs (ui-dialog.js) — webview lacks window.prompt. */
+.ui-dialog-backdrop {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center;
+}
+.ui-dialog {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.55);
+    padding: 16px; width: min(380px, 92vw);
+    display: flex; flex-direction: column; gap: 12px;
+}
+.ui-dialog-msg { font-size: 13px; color: var(--text); white-space: pre-line; }
+.ui-dialog-input {
+    width: 100%; box-sizing: border-box; padding: 6px 8px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 3px; color: var(--text); font-size: 13px;
+}
+.ui-dialog-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.ui-dialog-choices { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.ui-dialog-choice {
+    display: flex; align-items: center; gap: 8px; text-align: left;
+    padding: 6px 8px; background: var(--panel-2); border: 1px solid transparent;
+    border-radius: 3px; color: var(--text); cursor: pointer; font-size: 13px;
+}
+.ui-dialog-choice:hover { border-color: var(--border); }
+.ui-dialog-choice.selected { border-color: var(--accent); background: #2a3340; }
+.ui-dialog-choice-sw { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); flex: none; }
+.ui-dialog-choice-label { flex: 1; }
 .tp-layer-row.indented { padding-left: 20px; }
 .tp-layer-row .exp { margin: 0; width: 14px; height: 14px; cursor: pointer; accent-color: var(--accent); }
 .tp-layer-row .swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,.2); }
@@ -624,6 +677,7 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
             <div class="layers" id="layers"></div>
             <div class="layer-actions">
                 <button class="btn" id="addLayer">+ Layer</button>
+                <button class="btn" id="mergeShapes" title="Merge selected shapes into one (boolean union)">Merge</button>
                 <button class="btn danger" id="clearLayer" title="Clear active layer">Clear</button>
             </div>
         </section>
@@ -678,7 +732,7 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
     <!-- RIGHT: toolpath / plot settings + export -->
     <div class="panel right">
         <section class="mode-plot-only">
-            <h2>Plot Colors (pens)</h2>
+            <h2>Pens</h2>
             <div id="plotColors" style="padding: 4px; max-height: 22vh; overflow-y: auto;"></div>
             <div class="layer-actions">
                 <button class="btn" id="addPlotColor" title="Add a pen" style="flex:1;">+ Pen</button>

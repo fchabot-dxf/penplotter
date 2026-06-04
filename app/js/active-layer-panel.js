@@ -3,7 +3,7 @@
 //   - Outline settings (for Outline toolpaths)
 //   - Fill settings (for Fill toolpaths)
 
-import { state, activeToolpath } from "./state.js";
+import { state, activeToolpath, penWidthFor } from "./state.js";
 import { $ } from "./dom.js";
 import { FILL_PATTERNS, PATTERN_OPTIONS } from "./fill/index.js";
 import { OUTLINE_STYLES, STYLE_OPTIONS } from "./outline/index.js";
@@ -12,7 +12,7 @@ import { snapshot } from "./history.js";
 // Friendly labels + step/min/max for each numeric option.
 const FIELD_META = {
     spacing:     { label: "Spacing", unit: "mm",  min: 0.2, max: 20,  step: 0.1 },
-    offset:      { label: "Offset",  unit: "mm",  min: 0,   max: 20,  step: 0.1 },
+    offset:      { label: "Offset",  unit: "mm",  min: -20, max: 20,  step: 0.1 },
     angle:       { label: "Angle",   unit: "°",   min: 0,   max: 180, step: 1 },
     dash_length: { label: "Dash",    unit: "mm",  min: 0.2, max: 20,  step: 0.1 },
     dash_gap:    { label: "Gap",     unit: "mm",  min: 0.2, max: 20,  step: 0.1 },
@@ -79,13 +79,19 @@ export function renderActiveLayerPanel() {
     const resolveSameType = () =>
         state.toolpaths.filter(t => sameTypeIds.includes(t.id));
 
-    // Pen width — applies to every selected toolpath.
+    // Pen width is a property of the PEN — editing here sets the width of
+    // the selected toolpaths' pen(s), so every toolpath on that pen updates.
     root.appendChild(subhead("Pen"));
     root.appendChild(numberField("Pen width", "mm",
-        commonValue(targets, t => t.penWidth),
+        commonValue(targets, t => penWidthFor(t)),
         0.05, 5, 0.05, (v) => {
             snapshot();
-            for (const t of resolveTargets()) t.penWidth = v;
+            const seen = new Set();
+            for (const t of resolveTargets()) {
+                const pen = state.plotColors.find(p => p.id === t.plotColorId);
+                if (pen) { if (!seen.has(pen.id)) { pen.width = v; seen.add(pen.id); } }
+                else t.penWidth = v; // unlinked toolpath keeps a local width
+            }
             triggerRerender();
         }));
 

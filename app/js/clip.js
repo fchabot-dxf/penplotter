@@ -32,15 +32,35 @@ export function fromClipper(path) {
     return pts;
 }
 
-/** Nested inward offsets of a closed polygon. Ring i is inset by
- *  `offset + i*spacing`. Returns an array of closed point-rings — more
- *  than one per step when the shape pinches and splits. Robust on concave
- *  shapes (mitred corners, no self-intersection) where a naive per-vertex
- *  offset tangles.
+/** Boolean union of polygons into their combined outline. Each input is a
+ *  closed ring [[x,y],…]. Returns the merged boundary as an array of closed
+ *  rings in source units — usually one outer ring, plus extra rings for any
+ *  holes or disjoint pieces. */
+export function unionPolygons(polygons) {
+    const clipper = new ClipperLib.Clipper();
+    let added = 0;
+    for (const poly of polygons) {
+        const path = toClipper(poly);
+        if (path.length >= 3) { clipper.AddPath(path, ClipperLib.PolyType.ptSubject, true); added++; }
+    }
+    if (!added) return [];
+    const sol = new ClipperLib.Paths();
+    clipper.Execute(ClipperLib.ClipType.ctUnion, sol,
+        ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+    return sol.filter(r => r.length >= 3).map(fromClipper);
+}
+
+/** Concentric offsets of a closed polygon. Ring i is inset by
+ *  `offset + i*spacing`, starting at i = 0 — so with offset 0 the FIRST
+ *  ring is the outline itself and the fill starts on the shape boundary.
+ *  A negative offset starts the rings OUTSIDE the outline (overdraw/bleed).
+ *  Returns an array of closed point-rings — more than one per step when the
+ *  shape pinches and splits. Robust on concave shapes (mitred corners, no
+ *  self-intersection) where a naive per-vertex offset tangles.
  *
  *  @param polygon  [[x,y],…] closed or open ring
  *  @param spacing  gap between rings (source units, e.g. mm)
- *  @param offset   extra inset before the first ring
+ *  @param offset   inset of the first ring (0 = on the outline, <0 = outside)
  *  @param maxRings safety cap on iterations */
 export function offsetRings(polygon, spacing, offset = 0, maxRings = 500) {
     const path = toClipper(polygon);
@@ -54,11 +74,18 @@ export function offsetRings(polygon, spacing, offset = 0, maxRings = 500) {
     co.AddPath(path, ClipperLib.JoinType.jtMiter, ClipperLib.EndType.etClosedPolygon);
 
     const rings = [];
-    for (let i = 1; i <= maxRings; i++) {
-        const delta = -(offset + i * spacing) * CLIP_SCALE;
+    for (let i = 0; i < maxRings; i++) {
+        const inset = offset + i * spacing;
+        // delta < 0 shrinks inward, > 0 grows outward, 0 returns the outline.
         const sol = new ClipperLib.Paths();
-        co.Execute(sol, delta);
-        if (!sol.length) break;
+        co.Execute(sol, -inset * CLIP_SCALE);
+        // Inward steps eventually shrink to nothing → done. (Outward/zero
+        // steps always produce geometry, so this only trips once we're
+        // insetting past the shape's interior.)
+        if (!sol.length) {
+            if (inset > 0) break;
+            continue;
+        }
         for (const ring of sol) {
             if (ring.length >= 3) rings.push(fromClipper(ring));
         }

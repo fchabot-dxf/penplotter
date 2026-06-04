@@ -4,7 +4,7 @@
 
 import { state } from "./state.js";
 import { SVG_NS, toast } from "./dom.js";
-import { toolpathColor } from "./state.js";
+import { toolpathColor, orderedToolpaths, penWidthFor } from "./state.js";
 import { toolpathToPolylines } from "./vpype/index.js";
 import { expandLayerWithFill } from "./fill/index.js";
 import { expandLayerOutline } from "./outline/index.js";
@@ -37,7 +37,7 @@ function sourceHash() {
         toolpaths: state.toolpaths.map(tp => ({
             n: tp.name, e: tp.export, t: tp.type, tt: tp.targetType,
             al: tp.targetArtLayerId, sids: tp.targetShapeIds,
-            pw: tp.penWidth, do: tp.drawOutline,
+            pw: penWidthFor(tp), do: tp.drawOutline,
             fill: tp.fill, outline: tp.outline,
         })),
         selectedShapeIds: [...state.selectedShapeIds].sort(),
@@ -69,7 +69,10 @@ async function fetchPreview(hashAtRequestTime) {
             mergeTol: 0.05,
             simplifyTol: state.settings.tolerance_mm || 0.1,
         };
-        for (const tp of state.toolpaths) {
+        // Built in draw order (panel top→bottom) so overlays append earlier
+        // ops first (underneath) and later ops last (on top) — the sim then
+        // mirrors the real completion order.
+        for (const tp of orderedToolpaths()) {
             if (!tp.visible || tp.export === false) continue;
             const targetShapes = resolveToolpathShapes(tp);
             if (!targetShapes.length) continue;
@@ -312,7 +315,7 @@ export function buildSimulationOverlay() {
         // the toolpath's pen width with round caps so it looks like ink
         // on paper.
         const color = toolpathColor(tp);
-        const penWidth = tp ? tp.penWidth : 0.5;
+        const penWidth = penWidthFor(tp);
         // "Active" highlight applies to anything in the multi-selection
         // (so box-selected toolpaths all light up together) as well as
         // the single click-active toolpath.
