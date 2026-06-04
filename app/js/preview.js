@@ -270,8 +270,8 @@ function selectionDashes(strokes) {
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("fill", "none");
     g.setAttribute("stroke", "#ff2e88");
-    g.setAttribute("stroke-width", "1.1");
-    g.setAttribute("stroke-dasharray", "5 3");
+    g.setAttribute("stroke-width", "0.6");
+    g.setAttribute("stroke-dasharray", "3 2");
     g.setAttribute("stroke-linecap", "round");
     g.setAttribute("stroke-linejoin", "round");
     g.setAttribute("vector-effect", "non-scaling-stroke");
