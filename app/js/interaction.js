@@ -856,17 +856,14 @@ function updateSelectHover(e, p) {
             const g = document.createElementNS(SVG_NS, "g");
             g.style.opacity = GHOST_OPACITY;
             g.style.pointerEvents = "none";
-            // Thin, nudged a hair down-right so the hover reads as a subtle
-            // offset of the (thin) selected dashes — not a heavy block.
-            const o = 2 / Math.max(0.001, state.viewport.scale);
-            g.setAttribute("transform", `translate(${o} ${o})`);
             for (const stroke of layer.strokes) {
                 if (stroke.length < 2) continue;
                 const pl = document.createElementNS(SVG_NS, "polyline");
                 pl.setAttribute("points", stroke.map(q => `${q[0]},${q[1]}`).join(" "));
                 pl.style.fill = "none";
                 pl.style.stroke = GHOST_TOOLPATH;
-                pl.style.strokeWidth = "1.4";
+                pl.style.strokeWidth = "0.6"; // identical look to the selection
+                pl.style.strokeDasharray = "3 2";
                 pl.style.strokeLinecap = "round";
                 pl.style.strokeLinejoin = "round";
                 pl.setAttribute("vector-effect", "non-scaling-stroke");
