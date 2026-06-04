@@ -25,6 +25,9 @@ export function renderLayersPanel() {
         if (collapsed.get(group.id)) continue;
 
         for (const colorBucket of group.colors) {
+            // Default the tree to the second level: color buckets start
+            // collapsed (roles/shapes hidden) until the user expands one.
+            if (!collapsed.has(colorBucket.id)) collapsed.set(colorBucket.id, true);
             layersEl.appendChild(colorRow(colorBucket, group));
             if (collapsed.get(colorBucket.id)) continue;
 
