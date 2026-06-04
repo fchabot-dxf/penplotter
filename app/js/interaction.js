@@ -890,7 +890,7 @@ function updateSelectHover(e, p) {
                 pl.setAttribute("points", stroke.map(q => `${q[0]},${q[1]}`).join(" "));
                 pl.style.fill = "none";
                 pl.style.stroke = GHOST_TOOLPATH;
-                pl.style.strokeWidth = "3.2"; // heaviest: idle 0.8 < selected 1.8 < hover 3.2
+                pl.style.strokeWidth = "4.5"; // heaviest: idle 0.8 < selected 2.8 < hover 4.5
                 pl.style.strokeDasharray = "3 2";
                 pl.style.strokeLinecap = "round";
                 pl.style.strokeLinejoin = "round";
