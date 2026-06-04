@@ -5,6 +5,10 @@ import { canvas } from "./dom.js";
 
 const TOOL_CLASSES = ["tool-select", "tool-rotate", "tool-scale", "tool-line", "tool-rect", "tool-ellipse", "tool-polyline", "tool-freehand", "tool-scissors", "tool-node"];
 
+// Shape-editing tools — while one is active in toolpath/sim view, the
+// toolpath overlay must stop capturing clicks so they reach the artwork.
+const SHAPE_EDIT_TOOLS = ["node", "scissors", "rotate", "scale", "line", "rect", "ellipse", "polyline", "freehand"];
+
 export function setTool(tool) {
     state.tool = tool;
     canvas.classList.remove(...TOOL_CLASSES);
@@ -12,6 +16,7 @@ export function setTool(tool) {
     document.querySelectorAll(".tool").forEach(b =>
         b.classList.toggle("active", b.dataset.tool === tool)
     );
+    document.body.classList.toggle("shape-tools", SHAPE_EDIT_TOOLS.includes(tool));
     if (state.interaction) cancelInteraction();
     removePreview(); // clear any scissors hover highlight when switching tools
 }

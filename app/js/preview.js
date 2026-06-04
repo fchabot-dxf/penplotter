@@ -207,30 +207,7 @@ export function buildToolpathOverlay() {
         }
         layerG.appendChild(hitG);
 
-        // Selection halo for active/selected toolpaths — translucent
-        // blue, thick, drawn UNDER the actual plot lines so the user
-        // sees the toolpath's plot color unmodified. Rendered as a
-        // sub-group beneath .tp-visible (appended first).
-        if (isActive) {
-            const haloG = document.createElementNS(SVG_NS, "g");
-            haloG.classList.add("tp-halo");
-            haloG.setAttribute("fill", "none");
-            haloG.setAttribute("stroke", "rgba(17, 119, 187, 0.55)");
-            haloG.setAttribute("stroke-width", "3");
-            haloG.setAttribute("stroke-linecap", "round");
-            haloG.setAttribute("stroke-linejoin", "round");
-            haloG.setAttribute("vector-effect", "non-scaling-stroke");
-            haloG.setAttribute("pointer-events", "none");
-            for (const stroke of layer.strokes) {
-                if (stroke.length < 2) continue;
-                const hp = document.createElementNS(SVG_NS, "polyline");
-                hp.setAttribute("points", stroke.map(p => `${p[0]},${p[1]}`).join(" "));
-                haloG.appendChild(hp);
-            }
-            layerG.appendChild(haloG);
-        }
-
-        // Visible geometry — rendered on top of the halo + hit zone so
+        // Visible geometry — rendered on top of the hit zone so
         // the user sees the actual strokes in their plot color.
         const visibleG = document.createElementNS(SVG_NS, "g");
         visibleG.classList.add("tp-visible");
@@ -279,10 +256,33 @@ export function buildToolpathOverlay() {
         }
 
         layerG.appendChild(visibleG);
+        // Selected toolpath → pink dashed lines on top (matches the select
+        // hover ghost); no colour halo.
+        if (isActive) layerG.appendChild(selectionDashes(layer.strokes));
         overlay.appendChild(layerG);
     }
 
     return { overlay, stats };
+}
+
+/** Pink dashed overlay tracing a toolpath's strokes — the selection cue. */
+function selectionDashes(strokes) {
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("fill", "none");
+    g.setAttribute("stroke", "#ff2e88");
+    g.setAttribute("stroke-width", "1.1");
+    g.setAttribute("stroke-dasharray", "5 3");
+    g.setAttribute("stroke-linecap", "round");
+    g.setAttribute("stroke-linejoin", "round");
+    g.setAttribute("vector-effect", "non-scaling-stroke");
+    g.setAttribute("pointer-events", "none");
+    for (const stroke of strokes) {
+        if (stroke.length < 2) continue;
+        const pl = document.createElementNS(SVG_NS, "polyline");
+        pl.setAttribute("points", stroke.map(p => `${p[0]},${p[1]}`).join(" "));
+        g.appendChild(pl);
+    }
+    return g;
 }
 
 // Polyline layers now come from our own pipeline carrying the toolpath
@@ -355,29 +355,7 @@ export function buildSimulationOverlay() {
         }
         layerG.appendChild(hitG);
 
-        // Halo for selected/active toolpaths — translucent blue, sized
-        // a bit thicker than the pen width so it peeks out around the
-        // ink stroke. Drawn beneath the visible group.
-        if (isActive) {
-            const haloG = document.createElementNS(SVG_NS, "g");
-            haloG.classList.add("tp-halo");
-            haloG.setAttribute("fill", "none");
-            haloG.setAttribute("stroke", "rgba(17, 119, 187, 0.55)");
-            haloG.setAttribute("stroke-width", Math.max(0.8, penWidth + 0.8));
-            haloG.setAttribute("stroke-linecap", "round");
-            haloG.setAttribute("stroke-linejoin", "round");
-            haloG.setAttribute("pointer-events", "none");
-            for (const stroke of layer.strokes) {
-                if (stroke.length < 2) continue;
-                const hp = document.createElementNS(SVG_NS, "polyline");
-                hp.setAttribute("points", stroke.map(pt => `${pt[0]},${pt[1]}`).join(" "));
-                haloG.appendChild(hp);
-            }
-            layerG.appendChild(haloG);
-        }
-
-        // Visible "ink" strokes — full opacity always; the halo behind
-        // communicates selection without dimming the ink.
+        // Visible "ink" strokes — full opacity always.
         const visibleG = document.createElementNS(SVG_NS, "g");
         visibleG.classList.add("tp-visible");
         visibleG.setAttribute("stroke", color);
@@ -392,6 +370,7 @@ export function buildSimulationOverlay() {
             visibleG.appendChild(p);
         }
         layerG.appendChild(visibleG);
+        if (isActive) layerG.appendChild(selectionDashes(layer.strokes));
 
         overlay.appendChild(layerG);
     }

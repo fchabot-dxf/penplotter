@@ -41,11 +41,8 @@ export function render() {
         canvas.appendChild(g);
     }
 
-    // SVG selection halo — translucent blue on TOP of the artwork.
-    // Because it's translucent the asset's real color shows through
-    // tinted, so the user can still read the original art. Toolpath
-    // selection (preview.js) goes BENEATH because plotted strokes have
-    // no fill to tint, so a halo on top would just obscure them.
+    // SVG selection — translucent black outline on TOP of the artwork
+    // (matches the select hover ghost, just thinner).
     if (state.selectedShapeIds.size > 0) {
         canvas.appendChild(buildSelectionOverlay());
     }
@@ -202,25 +199,23 @@ function buildNodeHandles() {
 }
 
 function buildSelectionOverlay() {
-    // Drawn BENEATH the artwork. A thick translucent blue stroke
-    // extends out beyond the shape's edge, and a soft fill tints the
-    // interior — together they read as a colored shadow / halo without
-    // touching the asset's own colors. Non-scaling-stroke keeps the
-    // halo a constant visual thickness at any zoom.
+    // Matches the select hover ghost: a translucent BLACK outline (no fill)
+    // on top of the artwork, thinner than the thicker hover stroke. Constant
+    // visual thickness via non-scaling-stroke.
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("data-overlay", "selection");
     g.setAttribute("pointer-events", "none");
-    g.setAttribute("fill", "rgba(17, 119, 187, 0.18)");
-    g.setAttribute("stroke", "rgba(17, 119, 187, 0.55)");
-    g.setAttribute("stroke-width", "6");
+    g.setAttribute("fill", "none");
+    g.setAttribute("stroke", "#111111");
+    g.setAttribute("stroke-opacity", "0.65");
+    g.setAttribute("stroke-width", "2");
     g.setAttribute("stroke-linejoin", "round");
     g.setAttribute("stroke-linecap", "round");
     for (const sid of state.selectedShapeIds) {
         const s = findShape(sid);
         if (!s) continue;
         const el = makeShapeElement(s);
-        // Strip per-shape paint so the group's fill+stroke take effect.
-        el.removeAttribute("fill");
+        el.removeAttribute("fill"); el.style.fill = "none";
         el.removeAttribute("stroke");
         el.setAttribute("vector-effect", "non-scaling-stroke");
         el.classList.remove("shape");

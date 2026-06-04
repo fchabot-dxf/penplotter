@@ -157,6 +157,10 @@ html, body {
    shapes are easy to hit. */
 body.target-editing .tp-group,
 body.target-editing .tp-group * { pointer-events: none !important; }
+/* While a shape-edit tool is active, clicks fall through the toolpath
+   overlay to the artwork so node/scissors/draw work in toolpath/sim view. */
+body.shape-tools .tp-group,
+body.shape-tools .tp-group * { pointer-events: none !important; }
 body.target-editing [data-layer-id] { opacity: 0.6 !important; }
 /* Drag-and-drop visuals for moving toolpaths between pen folders. */
 .tp-layer-row.dragging, .group-row.dragging { opacity: 0.5; }

@@ -8,7 +8,7 @@ import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, co
 import { gatherSnapCandidates, shapeVertices, findSnapDelta } from "./snapping.js";
 import { resolveToolpathShapes } from "./preview.js";
 import { syncTargetEditingSelection } from "./toolpath-layers-panel.js";
-import { closedPolygonFor } from "./fill/utils.js";
+import { closedPolygonFor, pointInPolygon } from "./fill/utils.js";
 import { crossingParams, trimSpanAt, removedSpanAt } from "./trim.js";
 
 // Snap threshold is in SCREEN pixels — converted to mm per drag frame
@@ -55,11 +55,10 @@ function onDown(e) {
         return startSelect(e, p);
     }
 
-    if (!isSvgMode()) {
-        // Other tools (draw, rotate, scale) are SVG-mode only — the
-        // canvas is preview-only in pure toolpath/simulation views.
-        return;
-    }
+    // Shape tools (draw, rotate, scale, node, scissors) act on the artwork,
+    // which is always rendered (faint in toolpath/sim view). They work in any
+    // view now; while one is active the toolpath overlay stops capturing
+    // clicks (body.shape-tools, see CSS) so clicks reach the shapes.
 
     if (state.tool === "select") return startSelect(e, p);
     if (state.tool === "rotate") return startRotate(e, p);
@@ -231,30 +230,25 @@ function startSelect(e, p) {
     // multi-selection; empty-area drag starts a box-select that picks
     // every toolpath whose target geometry falls in the box.
     if (state.preview.showToolpath) {
-        let n = e.target;
-        while (n && n !== canvas) {
-            const tpid = n.dataset && n.dataset.toolpathId;
-            if (tpid) {
-                if (e.shiftKey) {
-                    // Toggle: shift-click on already-selected removes,
-                    // otherwise adds.
-                    if (state.selectedToolpathIds.has(tpid)) {
-                        state.selectedToolpathIds.delete(tpid);
-                    } else {
-                        state.selectedToolpathIds.add(tpid);
-                    }
-                } else {
-                    state.selectedToolpathIds = new Set([tpid]);
-                }
-                state.activeToolpathId = tpid;
-                render();
-                import("./active-layer-panel.js").then(m => m.renderActiveLayerPanel());
-                return;
+        // Near a toolpath stroke (within tolerance) → pick that toolpath.
+        const tol = TP_PICK_PX / Math.max(0.001, state.viewport.scale);
+        const tpid = nearestToolpathWithin(p, tol);
+        if (tpid) {
+            if (e.shiftKey) {
+                if (state.selectedToolpathIds.has(tpid)) state.selectedToolpathIds.delete(tpid);
+                else state.selectedToolpathIds.add(tpid);
+            } else {
+                state.selectedToolpathIds = new Set([tpid]);
             }
-            n = n.parentNode;
+            state.activeToolpathId = tpid;
+            render();
+            import("./active-layer-panel.js").then(m => m.renderActiveLayerPanel());
+            return;
         }
-        // Empty area in toolpath mode → rubber-band marquee that picks
-        // toolpaths (not shapes). Shift keeps the current selection.
+        // In the gap between strokes → select the SVG shape underneath.
+        const gapShape = shapeAtPoint(p);
+        if (gapShape) { beginShapeDrag(p, gapShape.id, e.shiftKey); return; }
+        // Empty → rubber-band marquee that picks toolpaths.
         state.interaction = {
             kind: "marquee",
             scope: "toolpath",
@@ -289,20 +283,7 @@ function startSelect(e, p) {
             render();
             return;
         }
-        if (!e.shiftKey) state.selectedShapeIds.clear();
-        state.selectedShapeIds.add(sid);
-        snapshot(); // about to move shapes
-        const shapeIds = new Set(state.selectedShapeIds);
-        const movingShapes = [...shapeIds].map(findShape).filter(Boolean);
-        state.interaction = {
-            kind: "drag",
-            startX: p.x, startY: p.y,
-            shapeIds,
-            shapes: movingShapes,
-            originals: movingShapes.map(deepCopyShape),
-            snapCandidates: gatherSnapCandidates(shapeIds),
-            snapPoint: null, // mm coords of active snap (for visual indicator)
-        };
+        beginShapeDrag(p, sid, e.shiftKey);
     } else {
         // Empty-area click → start a rubber-band marquee. Shift keeps
         // existing selection; without shift we'll clear it on mouseup.
@@ -778,46 +759,127 @@ function doNodeEdit(e, p) {
     render();
 }
 
-// ----- select hover ghost -----
+// ----- select: geometric hit-testing + hover ghost -----
 
 const GHOST_TOOLPATH = "#ff2e88"; // pink
 const GHOST_SHAPE = "#111111";    // black
 const GHOST_OPACITY = "0.65";
+const TP_PICK_PX = 7;             // hover/click tolerance to a toolpath stroke
 
-function ghostElement(shape, color) {
-    const el = makeShapeElement(shape);
-    // Inline styles so they win over the .preview class showPreview adds.
-    el.style.fill = color;
-    el.style.stroke = "none";
-    el.style.strokeDasharray = "none";
-    el.style.pointerEvents = "none";
-    return el;
+function pointSegDist(px, py, a, b) {
+    const vx = b[0] - a[0], vy = b[1] - a[1];
+    const wx = px - a[0], wy = py - a[1];
+    const len2 = vx * vx + vy * vy || 1e-9;
+    let t = (wx * vx + wy * vy) / len2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return Math.hypot(px - (a[0] + t * vx), py - (a[1] + t * vy));
 }
 
-/** Toolpath id under the cursor, walking up from the event target. */
-function toolpathIdAt(e) {
-    let n = e.target;
-    while (n && n !== canvas) {
-        if (n.dataset && n.dataset.toolpathId) return n.dataset.toolpathId;
-        n = n.parentNode;
+/** Id of the nearest visible toolpath whose plotted stroke is within `tol`
+ *  of point p, or null. Lets you grab a thin stroke without pixel-aiming. */
+function nearestToolpathWithin(p, tol) {
+    let best = null, bestD = tol;
+    for (const layer of (state.preview.cache.polylineLayers || [])) {
+        const tp = state.toolpaths.find(t => t.id === layer.id);
+        if (tp && !tp.visible) continue;
+        for (const stroke of layer.strokes) {
+            for (let i = 0; i + 1 < stroke.length; i++) {
+                const d = pointSegDist(p.x, p.y, stroke[i], stroke[i + 1]);
+                if (d < bestD) { bestD = d; best = layer.id; }
+            }
+        }
+    }
+    return best;
+}
+
+/** Topmost art shape whose interior contains point p, or null. */
+function shapeAtPoint(p) {
+    for (const l of state.artLayers) {
+        if (!l.visible) continue;
+        for (let i = l.shapes.length - 1; i >= 0; i--) {
+            const poly = closedPolygonFor(l.shapes[i]);
+            if (poly && pointInPolygon([p.x, p.y], poly)) return l.shapes[i];
+        }
     }
     return null;
+}
+
+/** Select shape `sid` and start dragging it (shared by SVG-view select and
+ *  toolpath-view gap-select). */
+function beginShapeDrag(p, sid, additive) {
+    if (!additive) state.selectedShapeIds.clear();
+    state.selectedShapeIds.add(sid);
+    snapshot();
+    const shapeIds = new Set(state.selectedShapeIds);
+    const movingShapes = [...shapeIds].map(findShape).filter(Boolean);
+    state.interaction = {
+        kind: "drag",
+        startX: p.x, startY: p.y,
+        shapeIds,
+        shapes: movingShapes,
+        originals: movingShapes.map(deepCopyShape),
+        snapCandidates: gatherSnapCandidates(shapeIds),
+        snapPoint: null,
+    };
+    render();
+}
+
+/** Shape hover/selection ghost: the shape's OUTLINE, stroked thick. The
+ *  stroke straddles the edge so it both touches the shape and outsets a
+ *  little — a halo, not a filled blob. */
+function ghostElement(shape, color) {
+    const el = makeShapeElement(shape);
+    // Inline styles win over the .preview class showPreview adds.
+    el.style.fill = "none";
+    el.style.stroke = color;
+    el.style.strokeWidth = "4";   // thicker than the selected outline (2)
+    el.style.strokeLinejoin = "round";
+    el.style.strokeDasharray = "none";
+    el.style.opacity = GHOST_OPACITY;
+    el.style.pointerEvents = "none";
+    el.setAttribute("vector-effect", "non-scaling-stroke");
+    return el;
 }
 
 /** Hover preview for the Select tool: a translucent ghost of what a click
  *  would select — pink toolpath in toolpath/sim view, black shape in SVG
  *  view. Pure overlay; doesn't touch the base artwork opacity. */
-function updateSelectHover(e) {
+function updateSelectHover(e, p) {
     if (state.preview.showToolpath) {
-        const tpid = toolpathIdAt(e);
-        const tp = tpid && state.toolpaths.find(t => t.id === tpid);
-        const shapes = tp ? resolveToolpathShapes(tp) : [];
-        if (!shapes.length) { removePreview(); return; }
-        const g = document.createElementNS(SVG_NS, "g");
-        g.style.opacity = GHOST_OPACITY;
-        g.style.pointerEvents = "none";
-        for (const s of shapes) g.appendChild(ghostElement(s, GHOST_TOOLPATH));
-        showPreview(g);
+        // Near a stroke (within tolerance) → pink ghost of that toolpath's
+        // EXACT plotted vector. In the gap between strokes → black ghost of
+        // the shape underneath (so you can grab shapes without a modifier).
+        const tol = TP_PICK_PX / Math.max(0.001, state.viewport.scale);
+        const tpid = nearestToolpathWithin(p, tol);
+        if (tpid) {
+            const layer = (state.preview.cache.polylineLayers || []).find(l => l.id === tpid);
+            const g = document.createElementNS(SVG_NS, "g");
+            g.style.opacity = GHOST_OPACITY;
+            g.style.pointerEvents = "none";
+            // Thin, nudged a hair down-right so the hover reads as a subtle
+            // offset of the (thin) selected dashes — not a heavy block.
+            const o = 2 / Math.max(0.001, state.viewport.scale);
+            g.setAttribute("transform", `translate(${o} ${o})`);
+            for (const stroke of layer.strokes) {
+                if (stroke.length < 2) continue;
+                const pl = document.createElementNS(SVG_NS, "polyline");
+                pl.setAttribute("points", stroke.map(q => `${q[0]},${q[1]}`).join(" "));
+                pl.style.fill = "none";
+                pl.style.stroke = GHOST_TOOLPATH;
+                pl.style.strokeWidth = "1.4";
+                pl.style.strokeLinecap = "round";
+                pl.style.strokeLinejoin = "round";
+                pl.setAttribute("vector-effect", "non-scaling-stroke");
+                g.appendChild(pl);
+            }
+            showPreview(g);
+            return;
+        }
+        const gapShape = shapeAtPoint(p);
+        if (!gapShape) { removePreview(); return; }
+        const el = ghostElement(gapShape, GHOST_SHAPE);
+        el.style.opacity = GHOST_OPACITY;
+        showPreview(el);
         return;
     }
     const sid = e.target.dataset && e.target.dataset.shapeId;
