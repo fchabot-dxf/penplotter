@@ -55,7 +55,16 @@ html, body {
         font-size: 12px; padding: 8px; cursor: pointer; border-bottom: 2px solid transparent;
     }
     #mobileTabs .mtab.active { color: var(--text); border-bottom-color: var(--accent-hi); }
-    .panel, .panel.right { grid-area: panels; overflow-y: auto; border-left: 0; border-right: 0; }
+    .panel, .panel.right {
+        grid-area: panels; overflow-y: auto; -webkit-overflow-scrolling: touch;
+        touch-action: pan-y; border-left: 0; border-right: 0;
+    }
+    /* Make the panel the ONE scroll container on touch — the desktop inner
+       scrollers (vh max-heights) become nested touch-scroll traps, so let
+       their content flow into the panel instead. */
+    .panel .layers, .panel #plotColors, .panel #toolpathLayers {
+        max-height: none !important; overflow: visible !important;
+    }
     body:not(.mtab-toolpath) .panel.right { display: none; }
     body.mtab-toolpath .panel:not(.right) { display: none; }
 }
