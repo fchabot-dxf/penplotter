@@ -40,17 +40,35 @@ function sourceHash() {
             pw: penWidthFor(tp), do: tp.drawOutline,
             fill: tp.fill, outline: tp.outline,
         })),
-        selectedShapeIds: [...state.selectedShapeIds].sort(),
     });
 }
 
-/** Ensure the preview cache is up-to-date with current state. Debounced. */
+/** Ensure the preview cache is up-to-date with current state. Debounced.
+ *  In manual mode (state.autoRecalc false) this is a no-op once an initial
+ *  preview exists — edits leave the cache stale until recalcPreview() runs. */
 export function requestPreview() {
     const wantHash = sourceHash();
     const cache = state.preview.cache;
     if (cache.sourceHash === wantHash && !cache.error) return; // already current
+    // Manual mode: don't auto-recompute on edits. Still build the very first
+    // preview so a freshly loaded project shows its toolpaths un-prompted.
+    if (!state.autoRecalc && cache.sourceHash !== null) return;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => fetchPreview(wantHash), DEBOUNCE_MS);
+}
+
+/** Force a recompute now, regardless of autoRecalc (the Recalculate button). */
+export function recalcPreview() {
+    clearTimeout(debounceTimer);
+    fetchPreview(sourceHash());
+}
+
+/** True when the cached toolpath no longer reflects the current artwork —
+ *  i.e. a recalculate is pending. Used to flag the Recalculate button. */
+export function isPreviewStale() {
+    const cache = state.preview.cache;
+    if (cache.fetching || cache.sourceHash === null) return false;
+    return cache.sourceHash !== sourceHash();
 }
 
 async function fetchPreview(hashAtRequestTime) {

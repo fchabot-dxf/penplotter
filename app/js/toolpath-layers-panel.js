@@ -12,11 +12,25 @@ import { state, makeToolpath, toolpathColor, findOrCreatePlotColor } from "./sta
 import { $, toast } from "./dom.js";
 import { render } from "./render.js";
 import { snapshot } from "./history.js";
+import { recalcPreview, isPreviewStale } from "./preview.js";
+
+/** Reflect toolpath freshness on the Recalculate button: glows when the
+ *  cached toolpath no longer matches the artwork, "Recalculating…" while busy. */
+function updateRecalcButton() {
+    const b = $("#recalcBtn");
+    if (!b) return;
+    const fetching = state.preview.cache && state.preview.cache.fetching;
+    const stale = isPreviewStale();
+    b.disabled = !!fetching;
+    b.classList.toggle("stale", stale && !fetching);
+    b.textContent = fetching ? "Recalculating…" : (stale ? "Recalculate •" : "Recalculate");
+}
 
 const collapsedPen = new Map();   // pen id → collapsed?
 const collapsedRole = new Map();  // "pen|role" key → collapsed?
 
 export function renderToolpathLayersPanel() {
+    updateRecalcButton();
     const root = $("#toolpathLayers");
     if (!root) return;
     root.innerHTML = "";
@@ -651,6 +665,8 @@ export function syncTargetEditingSelection() {
 }
 
 export function installToolpathLayersPanel() {
+    const recalc = $("#recalcBtn");
+    if (recalc) recalc.onclick = () => recalcPreview(); // fetchPreview re-renders on done
     $("#addOutlineTp").onclick = () => createToolpathAndEdit("outline");
     $("#addFillTp").onclick    = () => createToolpathAndEdit("fill");
     $("#exportAll").onclick = () => {

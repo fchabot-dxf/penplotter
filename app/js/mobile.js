@@ -14,14 +14,8 @@ export function installMobileLayout() {
     const tabs = [...document.querySelectorAll("#mobileTabs .mtab")];
     for (const b of tabs) {
         b.addEventListener("click", () => {
-            const toToolpath = b.dataset.mtab === "toolpath";
-            document.body.classList.toggle("mtab-toolpath", toToolpath);
+            document.body.classList.toggle("mtab-toolpath", b.dataset.mtab === "toolpath");
             tabs.forEach(x => x.classList.toggle("active", x === b));
-            // Keep the canvas view mode in sync with the tab. The right
-            // panel's sections are gated by body[data-mode]; in svg mode they
-            // are all hidden, so the Toolpath tab would otherwise be empty.
-            const toggle = document.getElementById(toToolpath ? "toggleToolpath" : "toggleSvg");
-            if (toggle) toggle.click(); // no-op if that mode is already active
         });
     }
 

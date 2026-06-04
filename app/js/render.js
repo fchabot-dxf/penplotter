@@ -23,7 +23,9 @@ export function render() {
     // selection. In SVG mode the shapes are at full opacity; in toolpath
     // / simulation modes they fade to a ghost layer that the overlay
     // sits on top of, but stays pickable.
-    const svgOpacity = state.preview.showSvg ? 1 : 0.18;
+    // Artwork stays full opacity normally; in simulation view it fades to a
+    // ghost so the pen-width strokes read clearly on top (still pickable).
+    const svgOpacity = state.preview.simulatePens ? 0.18 : 1;
     for (const layer of state.artLayers) {
         if (!layer.visible) continue;
         const g = document.createElementNS(SVG_NS, "g");

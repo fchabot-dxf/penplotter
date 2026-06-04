@@ -37,10 +37,14 @@ export const state = {
     viewport: { scale: 1, panX: 0, panY: 0 },
     interaction: null,
     spaceDown: false,
-    // Two modes only — SVG view or Toolpath view. The "simulate pens" flag
-    // lives separately; when set, the Toolpath view renders each stroke at
-    // its pen width (the old "Simulation" mode) instead of as a thin line.
-    preview: { showSvg: true, showToolpath: false, simulatePens: false },
+    // The artwork and the toolpath are ALWAYS both drawn on the canvas
+    // (showSvg/showToolpath stay true). The only view switch is simulatePens:
+    // off → full-opacity artwork + thin toolpath lines; on → the pen-width
+    // "simulation" with the artwork faded to a ghost behind it.
+    preview: { showSvg: true, showToolpath: true, simulatePens: false },
+    // When false (default), editing the artwork does NOT recompute the
+    // toolpath — the user hits Recalculate. Toggle in the Settings modal.
+    autoRecalc: false,
     // Identity of the cloud project we last loaded or saved. Save (the
     // "save" button, no name prompt) overwrites this id via PUT; Save
     // As creates a new id. Cleared when the user opens a fresh / blank

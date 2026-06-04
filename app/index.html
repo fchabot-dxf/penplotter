@@ -65,11 +65,7 @@ html, body {
     .panel .layers, .panel #plotColors, .panel #toolpathLayers {
         max-height: none !important; overflow: visible !important;
     }
-    /* The tabs switch SVG/Toolpath on mobile, so the in-canvas SVG/Toolpath
-       buttons are redundant — only the simulate toggle (toolpath view) is
-       left, and the whole strip hides in svg view. */
-    .view-toggles #toggleSvg, .view-toggles #toggleToolpath { display: none; }
-    body[data-mode="svg"] .view-toggles { display: none; }
+    .help { display: none; } /* keyboard hints are desktop-only */
     body:not(.mtab-toolpath) .panel.right { display: none; }
     body.mtab-toolpath .panel:not(.right) { display: none; }
 }
@@ -396,6 +392,13 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
     display: flex; flex-direction: column; gap: 12px;
 }
 .ui-dialog-msg { font-size: 13px; color: var(--text); white-space: pre-line; }
+/* Settings modal rows: label on the left (with a hint), control on the right. */
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.setting-row > span { font-size: 13px; color: var(--text); }
+.setting-row small { display: block; color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+.setting-row input[type=checkbox] { width: 16px; height: 16px; flex: none; cursor: pointer; }
+/* Recalculate button glows accent when the toolpath is stale. */
+#recalcBtn.stale { background: var(--accent); border-color: var(--accent-hi); color: #fff; }
 .ui-dialog-input {
     width: 100%; box-sizing: border-box; padding: 6px 8px;
     background: var(--panel-2); border: 1px solid var(--border);
@@ -547,14 +550,8 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
 
 input[type=file] { display: none; }
 
-/* Contextual menus — body[data-mode] is set by preview-controls.js. */
-body[data-mode="toolpath"]   .mode-svg-only,
-body[data-mode="simulation"] .mode-svg-only { display: none; }
-body[data-mode="svg"]        .mode-plot-only,
-body[data-mode="svg"]        .mode-toolpath-only { display: none; }
-body[data-mode="simulation"] .mode-toolpath-only { display: none; }
-/* The pen-width simulation toggle only makes sense in toolpath view. */
-body[data-mode="svg"] #toggleSimPens { display: none; }
+/* Both the artwork panel (layers/style) and the toolpath panel are always
+   visible now — no mode gating. The legacy .mode-*-only classes are inert. */
 
 /* tool icons */
 .tool svg { display: block; }
@@ -804,9 +801,8 @@ body[data-mode="svg"] #toggleSimPens { display: none; }
         <div class="drop-overlay" id="dropOverlay">Drop SVG to import</div>
 
         <div class="view-toggles">
-            <button class="view-toggle on" id="toggleSvg" title="Show the artwork">SVG</button>
-            <button class="view-toggle" id="toggleToolpath" title="Show the exact toolpath the plotter will draw">Toolpath</button>
-            <button class="view-toggle" id="toggleSimPens" title="Render toolpath strokes at their actual pen width">Pen widths</button>
+            <button class="view-toggle" id="toggleSimPens" title="Render toolpath strokes at their actual pen width (artwork fades behind)">Simulate</button>
+            <button class="view-toggle" id="settingsBtn" title="Settings">⚙</button>
         </div>
 
         <!-- Transform HUD — shows the live angle/factor while rotating or
@@ -849,6 +845,9 @@ body[data-mode="svg"] #toggleSimPens { display: none; }
         <section class="mode-plot-only">
             <h2>Toolpath Operations</h2>
             <div id="toolpathLayers" style="padding: 4px; max-height: 30vh; overflow-y: auto;"></div>
+            <div class="layer-actions" style="margin-bottom: 4px;">
+                <button class="btn" id="recalcBtn" title="Recompute the toolpath from the current artwork" style="flex:1;">Recalculate</button>
+            </div>
             <div class="layer-actions" style="margin-bottom: 4px;">
                 <button class="btn" id="addOutlineTp" style="flex:1;">+ Outline</button>
                 <button class="btn" id="addFillTp" style="flex:1;">+ Fill</button>
@@ -921,6 +920,21 @@ body[data-mode="svg"] #toggleSimPens { display: none; }
             <label>Height <small class="doc-unit-label">mm</small></label>
             <input type="number" id="docH" min="10" max="2000" step="1" value="200">
         </div>
+    </div>
+</div>
+
+<div id="settingsModal" class="ui-dialog-backdrop" style="display:none;">
+    <div class="ui-dialog">
+        <div class="ui-dialog-msg" style="display:flex; justify-content:space-between; align-items:center; font-weight:600;">
+            <span>Settings</span>
+            <button class="preset-close" id="settingsModalClose" title="Close">✕</button>
+        </div>
+        <label class="setting-row">
+            <span>Auto-recalculate toolpaths
+                <small>Recompute the toolpath whenever the artwork changes. Off: use the Recalculate button.</small>
+            </span>
+            <input type="checkbox" id="autoRecalcToggle">
+        </label>
     </div>
 </div>
 

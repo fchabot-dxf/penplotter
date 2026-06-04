@@ -5,6 +5,7 @@ import { state } from "./state.js";
 import { $ } from "./dom.js";
 import { fitViewport, applyViewport } from "./viewport.js";
 import { render } from "./render.js";
+import { recalcPreview } from "./preview.js";
 
 const SETTINGS_MAP = {
     penUpZ:   "pen_up_z",
@@ -16,6 +17,24 @@ const SETTINGS_MAP = {
 
 const MM_PER_IN = 25.4;
 const DOC_UNIT_LS = "penplotter.docUnit";
+const AUTO_RECALC_LS = "penplotter.autoRecalc";
+
+/** Open/close helper shared by the modals: ✕ button, backdrop click, Esc. */
+function wireModal(openerId, modalId, closeId, onOpen) {
+    const opener = $("#" + openerId), modal = $("#" + modalId), closeBtn = $("#" + closeId);
+    if (!modal) return;
+    const close = () => { modal.style.display = "none"; };
+    if (opener) {
+        opener.style.cursor = "pointer";
+        opener.style.pointerEvents = "auto"; // status-bar parent is pointer-events:none
+        opener.addEventListener("click", () => { if (onOpen) onOpen(); modal.style.display = "flex"; });
+    }
+    if (closeBtn) closeBtn.addEventListener("click", close);
+    modal.addEventListener("mousedown", (e) => { if (e.target === modal) close(); });
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modal.style.display !== "none") close();
+    });
+}
 
 const inInches = () => state.docUnit === "in";
 const toDisplay = (mm) => (inInches() ? mm / MM_PER_IN : mm);
@@ -53,18 +72,24 @@ export function installSettingsPanel() {
         applyViewport(); // refresh the dimension/zoom status text (keeps zoom)
     });
 
-    // Document settings live in a modal opened by clicking the dimension
-    // readout in the status bar. Backdrop click / ✕ / Esc close it.
-    const docInfo = $("#docInfo"), docModal = $("#docModal"), docClose = $("#docModalClose");
-    if (docInfo && docModal) {
-        docInfo.style.cursor = "pointer";
-        docInfo.title = "Document settings";
-        const closeDoc = () => { docModal.style.display = "none"; };
-        docInfo.addEventListener("click", () => { docModal.style.display = "flex"; });
-        if (docClose) docClose.addEventListener("click", closeDoc);
-        docModal.addEventListener("mousedown", (e) => { if (e.target === docModal) closeDoc(); });
-        document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape" && docModal.style.display !== "none") closeDoc();
+    // Document settings: opened by clicking the dimension readout in the
+    // status bar. General user settings: opened by the gear in the canvas.
+    const docInfo = $("#docInfo");
+    if (docInfo) docInfo.title = "Document settings";
+    wireModal("docInfo", "docModal", "docModalClose");
+    wireModal("settingsBtn", "settingsModal", "settingsModalClose");
+
+    // Auto-recalculate toggle (Settings modal). Off by default: edits leave
+    // the toolpath stale until Recalculate. Persisted across sessions.
+    try { state.autoRecalc = localStorage.getItem(AUTO_RECALC_LS) === "1"; } catch { /* ignore */ }
+    const autoToggle = $("#autoRecalcToggle");
+    if (autoToggle) {
+        autoToggle.checked = state.autoRecalc;
+        autoToggle.addEventListener("change", (e) => {
+            state.autoRecalc = e.target.checked;
+            try { localStorage.setItem(AUTO_RECALC_LS, state.autoRecalc ? "1" : "0"); } catch { /* ignore */ }
+            if (state.autoRecalc) recalcPreview(); // catch up immediately when enabled
+            render();
         });
     }
 
