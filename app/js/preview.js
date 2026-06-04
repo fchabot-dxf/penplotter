@@ -183,12 +183,12 @@ export function buildToolpathOverlay() {
     marker.setAttribute("id", "tpStartArrow");
     marker.setAttribute("orient", "auto");
     marker.setAttribute("markerUnits", "userSpaceOnUse");
-    marker.setAttribute("markerWidth", "2.4");
-    marker.setAttribute("markerHeight", "2.4");
+    marker.setAttribute("markerWidth", "1.4");
+    marker.setAttribute("markerHeight", "1.4");
     marker.setAttribute("refX", "0");
-    marker.setAttribute("refY", "1.2");
+    marker.setAttribute("refY", "0.7");
     const tri = document.createElementNS(SVG_NS, "path");
-    tri.setAttribute("d", "M0,0 L2.4,1.2 L0,2.4 Z");
+    tri.setAttribute("d", "M0,0 L1.4,0.7 L0,1.4 Z");
     tri.setAttribute("fill", TP_DIAG_COLOR);
     marker.appendChild(tri);
     defs.appendChild(marker);
