@@ -57,17 +57,17 @@ export function setConfig({ url, apiKey } = {}) {
 }
 
 export function isConfigured() {
-    const { url, apiKey } = getConfig();
-    return !!(url && apiKey && !url.includes("your-subdomain"));
+    const { url } = getConfig();
+    return !!(url && !url.includes("your-subdomain"));
 }
 
 async function call(method, path, body) {
     const { url, apiKey } = getConfig();
-    if (!url || !apiKey) throw new Error("Cloud not configured — set Worker URL + API key in Settings.");
-    const init = {
-        method,
-        headers: { "X-API-Key": apiKey },
-    };
+    if (!url) throw new Error("Cloud not configured.");
+    const init = { method, headers: {} };
+    // The worker is keyless; only send a key if one is configured (kept for
+    // backward compatibility with a key-protected worker).
+    if (apiKey) init.headers["X-API-Key"] = apiKey;
     if (body !== undefined) {
         init.headers["Content-Type"] = "application/json";
         init.body = JSON.stringify(body);

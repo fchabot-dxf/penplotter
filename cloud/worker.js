@@ -20,7 +20,6 @@ const CORS = {
 };
 
 const json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "Content-Type": "application/json", ...CORS } });
-const unauthorized = () => new Response("unauthorized", { status: 401, headers: CORS });
 const notFound = () => new Response("not found", { status: 404, headers: CORS });
 
 async function listKind(kv, kind) {
@@ -86,8 +85,9 @@ async function deleteKind(kv, kind, id) {
 export default {
     async fetch(request, env) {
         if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-        const key = request.headers.get("X-API-Key");
-        if (!env.API_KEY || key !== env.API_KEY) return unauthorized();
+        // Keyless: no X-API-Key required (matches the other apps). Access is
+        // gated only by knowledge of the worker URL. Real secrets the worker
+        // itself needs stay as Worker secrets, never sent by the frontend.
 
         const url = new URL(request.url);
         const parts = url.pathname.split("/").filter(Boolean);
