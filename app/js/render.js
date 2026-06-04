@@ -188,13 +188,14 @@ function buildNodeHandles() {
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("pointer-events", "none");
     const r = 4 / Math.max(0.001, state.viewport.scale);
-    for (const [x, y] of nodes.pts) {
+    const active = state.activeNode && state.activeNode.shapeId === sid ? state.activeNode.index : -1;
+    nodes.pts.forEach(([x, y], i) => {
         const c = document.createElementNS(SVG_NS, "circle");
         c.setAttribute("cx", x); c.setAttribute("cy", y);
-        c.setAttribute("r", r);
-        c.setAttribute("class", "node-handle");
+        c.setAttribute("r", i === active ? r * 1.4 : r);
+        c.setAttribute("class", i === active ? "node-handle active" : "node-handle");
         g.appendChild(c);
-    }
+    });
     return g;
 }
 

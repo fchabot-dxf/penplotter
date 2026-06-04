@@ -135,6 +135,12 @@ function onMove(e) {
         render();
         return;
     }
+    if (it.kind === "nodedrag") {
+        it.nodes.pts[it.index] = [p.x, p.y];
+        setNodes(it.shape, it.nodes.pts, it.nodes.closed);
+        render();
+        return;
+    }
     if (it.kind === "draw") {
         it.x = p.x; it.y = p.y;
         showPreview(buildDrawPreviewEl(it));
@@ -181,6 +187,7 @@ function onUp() {
     if (!it) return;
     if (it.kind === "pan")      { canvas.classList.remove("panning"); state.interaction = null; return; }
     if (it.kind === "drag")     { state.interaction = null; return; }
+    if (it.kind === "nodedrag") { state.interaction = null; return; }
     if (it.kind === "draw")     { commitDraw(); return; }
     if (it.kind === "freehand") { commitFreehand(); return; }
     if (it.kind === "rotate" || it.kind === "scale") {
@@ -733,20 +740,18 @@ function updateNodeHover(e, p) {
     showPreview(el);
 }
 
-/** Node tool click: if a node of the selected shape is under the cursor,
- *  delete it (neighbours join straight; closed stays closed). Otherwise
- *  select the shape under the cursor so all its nodes show as handles. */
+/** Node tool mousedown: if a node of the selected shape is under the cursor,
+ *  select it (Delete removes it) and start dragging it. Otherwise select the
+ *  shape under the cursor so all its nodes show as handles. */
 function doNodeEdit(e, p) {
     const sel = selectedNodeShape();
     if (sel) {
         const thr = NODE_PICK_PX / Math.max(0.001, state.viewport.scale);
         const nn = nearestNode(sel.nodes.pts, [p.x, p.y]);
         if (nn.i >= 0 && nn.d <= thr) {
-            const minNodes = sel.nodes.closed ? 3 : 2;
-            if (sel.nodes.pts.length <= minNodes) { toast("Can't delete — too few nodes left.", true); return; }
-            snapshot();
-            sel.nodes.pts.splice(nn.i, 1);
-            setNodes(sel.shape, sel.nodes.pts, sel.nodes.closed);
+            state.activeNode = { shapeId: sel.shape.id, index: nn.i };
+            snapshot(); // about to move the node
+            state.interaction = { kind: "nodedrag", shape: sel.shape, nodes: sel.nodes, index: nn.i };
             removePreview();
             render();
             return;
@@ -755,8 +760,31 @@ function doNodeEdit(e, p) {
     // Not on a node → (re)select the shape under the cursor to edit it.
     const sid = e.target.dataset && e.target.dataset.shapeId;
     state.selectedShapeIds = sid ? new Set([sid]) : new Set();
+    state.activeNode = null;
     removePreview();
     render();
+}
+
+/** Delete the node currently selected by the node tool (Delete key). Bridges
+ *  its neighbours; a closed shape stays closed. */
+export function deleteActiveNode() {
+    const a = state.activeNode;
+    if (!a) return false;
+    const shape = findShape(a.shapeId);
+    if (!shape) { state.activeNode = null; return false; }
+    const nodes = getNodes(shape);
+    if (!nodes) return false;
+    const minNodes = nodes.closed ? 3 : 2;
+    if (a.index < 0 || a.index >= nodes.pts.length || nodes.pts.length <= minNodes) {
+        toast("Can't delete — too few nodes left.", true);
+        return false;
+    }
+    snapshot();
+    nodes.pts.splice(a.index, 1);
+    setNodes(shape, nodes.pts, nodes.closed);
+    state.activeNode = null;
+    render();
+    return true;
 }
 
 // ----- select: geometric hit-testing + hover ghost -----

@@ -4,7 +4,7 @@ import { state } from "./state.js";
 import { canvas } from "./dom.js";
 import { setTool, cancelInteraction } from "./tools.js";
 import { render } from "./render.js";
-import { commitPolyline } from "./interaction.js";
+import { commitPolyline, deleteActiveNode } from "./interaction.js";
 import { snapshot } from "./history.js";
 import { exitTargetEditing } from "./toolpath-layers-panel.js";
 
@@ -46,7 +46,11 @@ function onKeyDown(e) {
         if (state.interaction && state.interaction.kind === "polyline") commitPolyline();
         return;
     }
-    if (e.key === "Delete" || e.key === "Backspace") return deleteSelected();
+    if (e.key === "Delete" || e.key === "Backspace") {
+        // Node tool: Delete removes the selected node, not the whole shape.
+        if (state.tool === "node" && state.activeNode) { deleteActiveNode(); return; }
+        return deleteSelected();
+    }
 
     const tool = TOOL_KEYS[e.key.toLowerCase()];
     if (tool) setTool(tool);

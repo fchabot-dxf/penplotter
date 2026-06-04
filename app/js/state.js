@@ -20,6 +20,8 @@ export const state = {
     plotColors: [],
     tool: "select",
     selectedShapeIds: new Set(),
+    // Node-edit tool: the node currently selected (for drag / Delete).
+    activeNode: null, // { shapeId, index } | null
     // Toolpath multi-selection — populated by box-select in toolpath mode.
     // activeToolpathId stays the "primary" (last-clicked / first-selected).
     selectedToolpathIds: new Set(),
