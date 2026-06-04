@@ -32,6 +32,20 @@ export function fromClipper(path) {
     return pts;
 }
 
+/** Offset a closed polygon by `amount` mm: positive shrinks INWARD (inset),
+ *  negative grows OUTWARD (bleed). Returns the resulting closed ring(s) —
+ *  an inset can split a concave shape into several; an outward grow is one. */
+export function insetPolygon(polygon, amount) {
+    const path = toClipper(polygon);
+    if (path.length < 3) return [];
+    if (!ClipperLib.Clipper.Orientation(path)) path.reverse();
+    const co = new ClipperLib.ClipperOffset(2 /* miterLimit */, 0.25 * CLIP_SCALE);
+    co.AddPath(path, ClipperLib.JoinType.jtMiter, ClipperLib.EndType.etClosedPolygon);
+    const sol = new ClipperLib.Paths();
+    co.Execute(sol, -amount * CLIP_SCALE); // negative delta = inward
+    return sol.filter(r => r.length >= 3).map(fromClipper);
+}
+
 /** Boolean union of polygons into their combined outline. Each input is a
  *  closed ring [[x,y],…]. Returns the merged boundary as an array of closed
  *  rings in source units — usually one outer ring, plus extra rings for any

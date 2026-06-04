@@ -8,6 +8,8 @@ import * as zigzag from "./zigzag.js";
 import * as concentric from "./concentric.js";
 import * as stipple from "./stipple.js";
 import * as dots from "./dots.js";
+import { closedPolygonFor, makePolylineShape } from "./utils.js";
+import { insetPolygon } from "../clip.js";
 
 /** Registered fill patterns, keyed by id. */
 export const PATTERNS = {
@@ -26,12 +28,12 @@ export const FILL_PATTERNS = ["none", ...Object.keys(PATTERNS)];
  *  hide irrelevant inputs). */
 export const PATTERN_OPTIONS = {
     none:       [],
-    hatch:      ["angle", "spacing"],
-    crosshatch: ["angle", "spacing"],
-    zigzag:     ["angle", "spacing"],
+    hatch:      ["angle", "spacing", "offset"],
+    crosshatch: ["angle", "spacing", "offset"],
+    zigzag:     ["angle", "spacing", "offset"],
     concentric: ["spacing", "offset"],
-    stipple:    ["spacing"],
-    dots:       ["spacing"],
+    stipple:    ["spacing", "offset"],
+    dots:       ["spacing", "offset"],
 };
 
 /** Return the export-time shape list for `layer`: the user's drawn shapes
@@ -44,12 +46,27 @@ export function expandLayerWithFill(layer) {
     const pattern = PATTERNS[fill.pattern];
     if (!pattern) return out;
 
+    const off = +fill.offset || 0;
     const opts = {
         angle: +fill.angle || 0,
         spacing: Math.max(0.1, +fill.spacing || 2),
-        offset: +fill.offset || 0,
+        offset: off,
     };
     for (const shape of layer.shapes) {
+        // `offset` is universal: concentric applies it to its ring schedule;
+        // every other pattern insets/bleeds the fill REGION first (positive =
+        // inset from the edge, negative = bleed outward to cover corners) and
+        // then fills the offset polygon.
+        if (off !== 0 && fill.pattern !== "concentric") {
+            const poly = closedPolygonFor(shape);
+            if (poly) {
+                for (const ring of insetPolygon(poly, off)) {
+                    const region = makePolylineShape(ring);
+                    for (const extra of pattern.generate(region, { ...opts, offset: 0 })) out.push(extra);
+                }
+                continue;
+            }
+        }
         for (const extra of pattern.generate(shape, opts)) {
             out.push(extra);
         }
