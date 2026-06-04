@@ -295,7 +295,7 @@ function selectionDashes(strokes) {
     g.setAttribute("fill", "none");
     g.setAttribute("stroke", "#ff2e88");
     g.setAttribute("stroke-opacity", "0.65");
-    g.setAttribute("stroke-width", "1.2");
+    g.setAttribute("stroke-width", "1.8");
     g.setAttribute("stroke-dasharray", "3 2");
     g.setAttribute("stroke-linecap", "round");
     g.setAttribute("stroke-linejoin", "round");
