@@ -292,6 +292,16 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
 .preset-popover .preset-del:hover { color: var(--danger); border-color: var(--danger); }
 .preset-popover .preset-empty { color: var(--text-dim); font-size: 11px; padding: 12px; text-align: center; }
 .preset-popover .preset-empty.err { color: #ffb0b6; }
+.preset-popover .preset-folder-header {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 5px 6px; margin-top: 2px; font-size: 11px; color: var(--text-dim);
+    border-top: 1px solid var(--border); user-select: none;
+}
+.preset-popover .preset-folder-header:hover { color: var(--text); }
+.preset-popover .preset-folder-caret { width: 10px; }
+.preset-popover .preset-folder-name { flex: 1; color: var(--text); }
+.preset-popover .preset-folder-count { opacity: .6; font-variant-numeric: tabular-nums; }
+.preset-popover .preset-row-foldered { margin-left: 14px; }
 /* Modal variant: centered dialog over a dimming backdrop. */
 .preset-modal-backdrop {
     position: fixed; inset: 0; z-index: 300;

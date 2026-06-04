@@ -33,6 +33,11 @@ function openPalettePicker(anchor) {
         title: "Palette presets",
         saveLbl: "Save as new",
         list: () => cloud.listPalettes(),
+
+        // Folders
+        folders: () => cloud.listFolders("palettes"),
+        saveFolders: (arr) => cloud.saveFolders("palettes", arr),
+        setItemFolder: (id, folder) => cloud.setPaletteFolder(id, folder),
         // Show each saved palette's pen colours as an inline swatch strip.
         // The list API only returns names, so lazily fetch per row.
         getSwatches: async (id) => {

@@ -655,8 +655,13 @@ function doScissors(e, p) {
 
     snapshot();
     const idx = layer.shapes.indexOf(target);
-    const made = pieces.map(pts => {
-        const sh = { id: uid("shape"), type: "polyline", points: pts };
+    const made = pieces.map(piece => {
+        const points = piece.map(p => [p[0], p[1]]);
+        // Trimming a closed shape closes the remainder back up (a straight
+        // chord across the cut) so it stays a filled region.
+        if (tpl.closed && points.length >= 2) points.push([points[0][0], points[0][1]]);
+        const sh = { id: uid("shape"), type: "polyline", points };
+        if (tpl.closed && target._fill !== undefined) sh._fill = target._fill;
         if (target._stroke !== undefined) sh._stroke = target._stroke;
         if (target._strokeWidth !== undefined) sh._strokeWidth = target._strokeWidth;
         return sh;

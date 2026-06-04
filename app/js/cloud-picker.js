@@ -17,9 +17,11 @@
 //   title, saveLbl          → strings
 
 import { toast } from "./dom.js";
-import { uiPrompt, uiConfirm } from "./ui-dialog.js";
+import { uiPrompt, uiConfirm, uiChoose } from "./ui-dialog.js";
 
 let openEl = null;
+// Folder collapse state, keyed `${pickerTitle}|${folder}`, kept across opens.
+const folderCollapsed = new Map();
 
 function close() {
     if (!openEl) return;
@@ -43,6 +45,7 @@ export async function openPicker(anchorEl, opts) {
         list, save, saveCurrent, load, del,
         rename, duplicate, getThumbnail, getSwatches,
         currentName, title, saveLbl, modal,
+        folders, saveFolders, setItemFolder,
     } = opts;
 
     close();
@@ -59,6 +62,7 @@ export async function openPicker(anchorEl, opts) {
         <div class="preset-actions">
             ${saveCurrent ? `<button class="btn primary preset-save-current" ${currentName ? "" : "disabled"}>Save</button>` : ""}
             <button class="btn preset-save-as">${escapeHtml(saveLbl)}</button>
+            ${setItemFolder ? `<button class="btn preset-new-folder" title="Create a folder">＋ Folder</button>` : ""}
         </div>
         <div class="preset-list">Loading…</div>
     `;
@@ -87,6 +91,7 @@ export async function openPicker(anchorEl, opts) {
     // consistent and a fresh re-list won't reflect a brand-new write
     // for ~60s.
     let cachedItems = [];
+    let knownFolders = new Set(); // registry + folders seen on items
 
     async function runSave(saveFn) {
         if (!saveFn) return;
@@ -103,6 +108,7 @@ export async function openPicker(anchorEl, opts) {
                     id: r.id,
                     customMeta: { name: r.name },
                     savedAt: new Date().toISOString(),
+                    folder: r.folder || "",
                     _thumb: r.thumbnail || null,
                 });
                 renderList();
@@ -121,24 +127,64 @@ export async function openPicker(anchorEl, opts) {
     if (saveCurrentBtn) saveCurrentBtn.onclick = () => runSave(saveCurrent);
     pop.querySelector(".preset-save-as").onclick = () => runSave(save);
 
+    const newFolderBtn = pop.querySelector(".preset-new-folder");
+    if (newFolderBtn) newFolderBtn.onclick = async () => {
+        const name = (await uiPrompt("New folder name:") || "").trim();
+        if (!name) return;
+        if (name.includes("/")) { toast("Folder names can't contain '/'.", true); return; }
+        knownFolders.add(name);
+        folderCollapsed.set(`${title}|${name}`, false);
+        renderList();
+        if (saveFolders) { try { await saveFolders([...knownFolders]); } catch (e) { toast(e.message, true); } }
+    };
+
     function renderList() {
         const listEl = pop.querySelector(".preset-list");
-        if (!cachedItems.length) {
+        cachedItems.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+
+        // Group by folder; folder "" (or no folders feature) = top level.
+        const groups = new Map();
+        const root = [];
+        for (const it of cachedItems) {
+            const f = setItemFolder ? (it.folder || "").trim() : "";
+            if (!f) root.push(it);
+            else (groups.get(f) || groups.set(f, []).get(f)).push(it);
+        }
+        for (const f of knownFolders) if (f && !groups.has(f)) groups.set(f, []);
+
+        listEl.innerHTML = "";
+        if (!cachedItems.length && !groups.size) {
             listEl.innerHTML = `<div class="preset-empty">No saved entries yet.</div>`;
             return;
         }
-        cachedItems.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
-        listEl.innerHTML = "";
-        for (const it of cachedItems) {
-            listEl.appendChild(makeRow(it));
+        for (const it of root) listEl.appendChild(makeRow(it, false));
+        for (const f of [...groups.keys()].sort((a, b) => a.localeCompare(b))) {
+            const items = groups.get(f);
+            listEl.appendChild(makeFolderHeader(f, items));
+            if (!folderCollapsed.get(`${title}|${f}`)) {
+                for (const it of items) listEl.appendChild(makeRow(it, true));
+            }
         }
     }
 
-    function makeRow(it) {
+    function makeFolderHeader(f, items) {
+        const ck = `${title}|${f}`;
+        const collapsed = !!folderCollapsed.get(ck);
+        const h = document.createElement("div");
+        h.className = "preset-folder-header";
+        h.innerHTML = `
+            <span class="preset-folder-caret">${collapsed ? "▸" : "▾"}</span>
+            <span class="preset-folder-name">🗀 ${escapeHtml(f)}</span>
+            <span class="preset-folder-count">${items.length}</span>`;
+        h.onclick = () => { folderCollapsed.set(ck, !collapsed); renderList(); };
+        return h;
+    }
+
+    function makeRow(it, inFolder) {
         const name = (it.customMeta && it.customMeta.name) || it.id;
         const when = it.savedAt ? new Date(it.savedAt).toLocaleString() : "";
         const row = document.createElement("div");
-        row.className = "preset-row";
+        row.className = inFolder ? "preset-row preset-row-foldered" : "preset-row";
         row.style.cursor = "pointer";
         // Clicking anywhere on the row loads it. The action buttons below
         // stopPropagation so they don't also trigger a load.
@@ -188,9 +234,37 @@ export async function openPicker(anchorEl, opts) {
         }
         row.appendChild(nameWrap);
 
-        // Row actions: rename, duplicate, delete.
+        // Row actions: move, rename, duplicate, delete.
         const actions = document.createElement("div");
         actions.className = "preset-row-actions";
+
+        if (setItemFolder) {
+            const b = iconBtn("🗂", "Move to folder");
+            b.onclick = async (e) => {
+                e.stopPropagation();
+                const cur = (it.folder || "").trim();
+                const choices = [
+                    { value: "", label: "— No folder —" },
+                    ...[...knownFolders].filter(Boolean).sort().map(f => ({ value: f, label: f })),
+                    { value: "__new__", label: "＋ New folder…" },
+                ];
+                let dest = await uiChoose(`Move "${name}" to:`, choices, { defaultValue: cur, okLabel: "Move" });
+                if (dest === null) return;
+                if (dest === "__new__") {
+                    dest = (await uiPrompt("New folder name:") || "").trim();
+                    if (!dest || dest.includes("/")) return;
+                    knownFolders.add(dest);
+                    if (saveFolders) saveFolders([...knownFolders]).catch(() => {});
+                }
+                try {
+                    await setItemFolder(it.id, dest);
+                    it.folder = dest;
+                    toast(dest ? `Moved to "${dest}"` : "Moved out of folder");
+                    renderList();
+                } catch (err) { toast(err.message, true); }
+            };
+            actions.appendChild(b);
+        }
 
         if (rename) {
             const b = iconBtn("✎", "Rename");
@@ -264,6 +338,10 @@ export async function openPicker(anchorEl, opts) {
             listEl.innerHTML = `<div class="preset-empty err">${escapeHtml(e.message)}</div>`;
             return;
         }
+        // Folder registry (for empty folders) + any folders seen on items.
+        knownFolders = new Set();
+        if (folders) { try { for (const f of (await folders()) || []) if (f) knownFolders.add(f); } catch { /* ignore */ } }
+        for (const it of cachedItems) if (it.folder) knownFolders.add(it.folder);
         renderList();
     }
 

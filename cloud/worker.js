@@ -34,6 +34,7 @@ async function listKind(kv, kind) {
                 id: k.name.slice(kind.length + 1),
                 customMeta: { name: meta.name || "" },
                 savedAt: meta.savedAt || null,
+                folder: meta.folder || "",
             });
         }
         cursor = page.list_complete ? undefined : page.cursor;
@@ -46,9 +47,10 @@ async function saveKind(kv, kind, body) {
     const meta = {
         name: String(body.name || "untitled").slice(0, 100),
         savedAt: new Date().toISOString(),
+        folder: String(body.folder || "").slice(0, 80),
     };
     await kv.put(kind + "/" + id, JSON.stringify(body), { metadata: meta });
-    return { id, name: meta.name };
+    return { id, name: meta.name, folder: meta.folder };
 }
 
 /** PUT semantics:
@@ -64,10 +66,11 @@ async function updateKind(kv, kind, id, body) {
     const meta = {
         name: String(body.name || oldMeta.name || "untitled").slice(0, 100),
         savedAt: new Date().toISOString(),
+        folder: body.folder !== undefined ? String(body.folder).slice(0, 80) : (oldMeta.folder || ""),
     };
     const value = hasNewData ? JSON.stringify(body) : existing.value;
     await kv.put(kind + "/" + id, value, { metadata: meta });
-    return { id, name: meta.name };
+    return { id, name: meta.name, folder: meta.folder };
 }
 
 async function getKind(kv, kind, id) {
@@ -89,6 +92,29 @@ export default {
         const url = new URL(request.url);
         const parts = url.pathname.split("/").filter(Boolean);
         const [kind, id] = parts;
+
+        // Folder registry: GET/PUT /folders/{palettes|projects} → the list
+        // of folder names for that collection (so empty folders persist).
+        if (kind === "folders") {
+            if (id !== "palettes" && id !== "projects") return notFound();
+            const fkey = "folders/" + id;
+            try {
+                if (request.method === "GET") {
+                    const raw = await env.KV.get(fkey);
+                    return json(raw ? JSON.parse(raw) : []);
+                }
+                if (request.method === "PUT") {
+                    const body = await request.json();
+                    const arr = Array.isArray(body.folders)
+                        ? [...new Set(body.folders.map(f => String(f).slice(0, 80)).filter(Boolean))].slice(0, 200)
+                        : [];
+                    await env.KV.put(fkey, JSON.stringify(arr));
+                    return json(arr);
+                }
+            } catch (e) { return json({ error: e.message }, 500); }
+            return notFound();
+        }
+
         if (kind !== "palettes" && kind !== "projects") return notFound();
 
         try {

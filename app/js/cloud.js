@@ -69,18 +69,25 @@ async function call(method, path, body) {
 
 // ---------- palettes ----------
 
-export function listPalettes()             { return call("GET",    "/palettes"); }
-export function savePalette(name, p)       { return call("POST",   "/palettes", { name, palette: p }); }
-export function loadPalette(id)            { return call("GET",    `/palettes/${id}`); }
-export function updatePalette(id, name, p) { return call("PUT",    `/palettes/${id}`, { name, palette: p }); }
-export function renamePalette(id, name)    { return call("PUT",    `/palettes/${id}`, { name }); }
-export function deletePalette(id)          { return call("DELETE", `/palettes/${id}`); }
+export function listPalettes()                 { return call("GET",    "/palettes"); }
+export function savePalette(name, p, folder)   { return call("POST",   "/palettes", { name, palette: p, folder }); }
+export function loadPalette(id)                { return call("GET",    `/palettes/${id}`); }
+export function updatePalette(id, name, p, folder) { return call("PUT", `/palettes/${id}`, { name, palette: p, folder }); }
+export function renamePalette(id, name)        { return call("PUT",    `/palettes/${id}`, { name }); }
+export function setPaletteFolder(id, folder)   { return call("PUT",    `/palettes/${id}`, { folder }); }
+export function deletePalette(id)              { return call("DELETE", `/palettes/${id}`); }
 
 // ---------- projects ----------
 
-export function listProjects()             { return call("GET",    "/projects"); }
-export function saveProject(name, p)       { return call("POST",   "/projects", { name, project: p }); }
-export function loadProject(id)            { return call("GET",    `/projects/${id}`); }
-export function updateProject(id, name, p) { return call("PUT",    `/projects/${id}`, { name, project: p }); }
-export function renameProject(id, name)    { return call("PUT",    `/projects/${id}`, { name }); }
-export function deleteProject(id)          { return call("DELETE", `/projects/${id}`); }
+export function listProjects()                 { return call("GET",    "/projects"); }
+export function saveProject(name, p, folder)   { return call("POST",   "/projects", { name, project: p, folder }); }
+export function loadProject(id)                { return call("GET",    `/projects/${id}`); }
+export function updateProject(id, name, p, folder) { return call("PUT", `/projects/${id}`, { name, project: p, folder }); }
+export function renameProject(id, name)        { return call("PUT",    `/projects/${id}`, { name }); }
+export function setProjectFolder(id, folder)   { return call("PUT",    `/projects/${id}`, { folder }); }
+export function deleteProject(id)              { return call("DELETE", `/projects/${id}`); }
+
+// ---------- folder registry (per collection: "palettes" | "projects") ----------
+
+export function listFolders(coll)          { return call("GET",    `/folders/${coll}`); }
+export function saveFolders(coll, folders) { return call("PUT",    `/folders/${coll}`, { folders }); }

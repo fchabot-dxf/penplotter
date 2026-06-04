@@ -72,6 +72,11 @@ function openProjectPicker(anchor) {
         currentName: state.currentProject.name,
         list: () => cloud.listProjects(),
 
+        // Folders
+        folders: () => cloud.listFolders("projects"),
+        saveFolders: (arr) => cloud.saveFolders("projects", arr),
+        setItemFolder: (id, folder) => cloud.setProjectFolder(id, folder),
+
         // "Save as new" — always a fresh entry. Becomes the current one.
         save: async () => {
             const name = await uiPrompt("Project name:", suggestProjectName());
