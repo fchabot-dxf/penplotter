@@ -17,7 +17,7 @@ import { snapshot } from "./history.js";
 import * as cloud from "./cloud.js";
 import { openPicker } from "./cloud-picker.js";
 import { uiPrompt, uiConfirm } from "./ui-dialog.js";
-import { loadDefaults } from "./settings.js";
+import { loadDefaults, syncDocFields } from "./settings.js";
 
 export function installCloudPanel() {
     const url = $("#cloudUrl");
@@ -321,8 +321,7 @@ function applyProject(p) {
     state.selectedToolpathIds = new Set();
     // Sync hard-wired inputs (doc size, plotter settings) with the
     // restored values so the user sees the right numbers.
-    if ($("#docW")) $("#docW").value = state.doc.w;
-    if ($("#docH")) $("#docH").value = state.doc.h;
+    syncDocFields();
     loadDefaults();
     fitViewport();
     render();

@@ -5,7 +5,8 @@ let nextId = 1;
 export const uid = (prefix = "id") => `${prefix}${nextId++}`;
 
 export const state = {
-    doc: { w: 200, h: 200 },
+    doc: { w: 200, h: 200 },     // always stored in mm (plot/G-code unit)
+    docUnit: "mm",               // UI display unit: "mm" | "in"
     artLayers: [],
     get layers() { return this.artLayers; },
     set layers(value) { this.artLayers = value; },

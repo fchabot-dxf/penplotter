@@ -13,6 +13,7 @@ import { canvasWrap, dropOverlay, $, toast, INK_NS } from "./dom.js";
 import { fitViewport } from "./viewport.js";
 import { render } from "./render.js";
 import { snapshot } from "./history.js";
+import { syncDocFields } from "./settings.js";
 
 export function installSvgImport() {
     $("#importBtn").onclick = () => $("#importFile").click();
@@ -56,8 +57,7 @@ export function importSvgText(text) {
     if (!h && vb.length === 4) h = vb[3];
     state.doc.w = Math.round(w || 200);
     state.doc.h = Math.round(h || 200);
-    $("#docW").value = state.doc.w;
-    $("#docH").value = state.doc.h;
+    syncDocFields();
 
     state.artLayers = [];
     state.toolpaths = [];

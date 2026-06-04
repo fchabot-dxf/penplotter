@@ -727,11 +727,18 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
         <section>
             <h2>Document</h2>
             <div class="field">
-                <label>Width <small>mm</small></label>
+                <label>Units</label>
+                <select id="docUnit">
+                    <option value="mm">mm</option>
+                    <option value="in">inches</option>
+                </select>
+            </div>
+            <div class="field">
+                <label>Width <small class="doc-unit-label">mm</small></label>
                 <input type="number" id="docW" min="10" max="2000" step="1" value="200">
             </div>
             <div class="field">
-                <label>Height <small>mm</small></label>
+                <label>Height <small class="doc-unit-label">mm</small></label>
                 <input type="number" id="docH" min="10" max="2000" step="1" value="200">
             </div>
         </section>

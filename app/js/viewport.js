@@ -40,7 +40,11 @@ export function applyViewport() {
     const vbH = wrap.height / scale;
     canvas.setAttribute("viewBox", `${panX} ${panY} ${vbW} ${vbH}`);
     canvas.style.transform = "";
-    docInfoEl.textContent = `${state.doc.w} × ${state.doc.h} mm  ·  ${(scale * 25.4 / 96).toFixed(2)}× display`;
+    const inch = state.docUnit === "in";
+    const conv = inch ? 1 / 25.4 : 1;
+    const fmt = (mm) => (inch ? (mm * conv).toFixed(2) : Math.round(mm * conv));
+    const unit = inch ? "in" : "mm";
+    docInfoEl.textContent = `${fmt(state.doc.w)} × ${fmt(state.doc.h)} ${unit}  ·  ${(scale * 25.4 / 96).toFixed(2)}× display`;
 }
 
 export function screenToSvg(clientX, clientY) {
