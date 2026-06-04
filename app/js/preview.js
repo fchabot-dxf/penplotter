@@ -268,7 +268,7 @@ export function buildToolpathOverlay() {
             const dot = document.createElementNS(SVG_NS, "circle");
             dot.setAttribute("cx", stroke[0][0]);
             dot.setAttribute("cy", stroke[0][1]);
-            dot.setAttribute("r", "0.6");
+            dot.setAttribute("r", "0.3");
             dot.setAttribute("fill", color);
             dot.setAttribute("stroke", "none");
             dot.setAttribute("pointer-events", "none");
