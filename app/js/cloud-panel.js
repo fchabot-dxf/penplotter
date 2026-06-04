@@ -35,6 +35,33 @@ export function installCloudPanel() {
     // would wipe the icon).
     const projectBtn = $("#projectBtn");
     if (projectBtn) projectBtn.onclick = (e) => openProjectPicker(e.currentTarget);
+
+    const saveBtn = $("#saveProjectBtn");
+    if (saveBtn) saveBtn.onclick = quickSaveProject;
+}
+
+/** Disk button: overwrite the open project; if none is open yet, save as
+ *  new (prompting for a name). */
+async function quickSaveProject() {
+    if (!cloud.isConfigured()) { toast("Set Worker URL + API key first.", true); return; }
+    try {
+        const payload = snapshotProject();
+        const cur = state.currentProject;
+        if (cur.id) {
+            const r = await cloud.updateProject(cur.id, cur.name || "untitled", payload);
+            state.currentProject = { id: r.id, name: r.name };
+            toast(`Saved "${r.name}"`);
+        } else {
+            const name = await uiPrompt("Project name:", suggestProjectName());
+            if (!name) return;
+            const r = await cloud.saveProject(name, payload);
+            state.currentProject = { id: r.id, name: r.name };
+            toast(`Saved "${r.name}"`);
+        }
+        renderProjectList();
+    } catch (e) {
+        toast(e.message, true);
+    }
 }
 
 function openProjectPicker(anchor) {

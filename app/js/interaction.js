@@ -2,12 +2,14 @@
 // All shape geometry changes happen here; commits push onto the active layer.
 
 import { state, uid, activeArtLayer, findShape } from "./state.js";
-import { canvas, coordsEl, SVG_NS } from "./dom.js";
+import { canvas, coordsEl, SVG_NS, toast } from "./dom.js";
 import { screenToSvg, applyViewport } from "./viewport.js";
 import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, combinedBounds, shapeBounds } from "./shapes.js";
 import { gatherSnapCandidates, shapeVertices, findSnapDelta } from "./snapping.js";
 import { resolveToolpathShapes } from "./preview.js";
 import { syncTargetEditingSelection } from "./toolpath-layers-panel.js";
+import { closedPolygonFor } from "./fill/utils.js";
+import { crossingParams, trimSpanAt } from "./trim.js";
 
 // Snap threshold is in SCREEN pixels — converted to mm per drag frame
 // using the current viewport scale. That way a snap engages at a constant
@@ -62,6 +64,7 @@ function onDown(e) {
     if (state.tool === "select") return startSelect(e, p);
     if (state.tool === "rotate") return startRotate(e, p);
     if (state.tool === "scale")  return startScale(e, p);
+    if (state.tool === "scissors") return doScissors(e, p);
 
     const layer = activeArtLayer();
     if (!layer) return;
@@ -587,4 +590,78 @@ function buildFreehandPreviewEl(it) {
     const el = document.createElementNS(SVG_NS, "path");
     el.setAttribute("d", "M " + it.points.map(p => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(" L "));
     return el;
+}
+
+// ----- scissors / trim -----
+
+/** Convert a shape to { pts:[[x,y],…], closed } for trimming. */
+function shapeToPolyline(shape) {
+    if (shape.type === "line") {
+        return { pts: [[shape.x1, shape.y1], [shape.x2, shape.y2]], closed: false };
+    }
+    if (shape.type === "polyline") {
+        const pts = shape.points.map(p => [p[0], p[1]]);
+        let closed = false;
+        if (pts.length > 2) {
+            const a = pts[0], b = pts[pts.length - 1];
+            if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6) { closed = true; pts.pop(); }
+        }
+        return { pts, closed };
+    }
+    const poly = closedPolygonFor(shape); // rect / ellipse / path → closed ring
+    if (!poly) return null;
+    const pts = poly.map(p => [p[0], p[1]]);
+    if (pts.length > 1) {
+        const a = pts[0], b = pts[pts.length - 1];
+        if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6) pts.pop();
+    }
+    return { pts, closed: true };
+}
+
+/** Scissors: snip the clicked vector, removing the span between its two
+ *  nearest crossings with other visible vectors. The remainder stays as
+ *  open polyline(s). */
+function doScissors(e, p) {
+    const sid = e.target.dataset && e.target.dataset.shapeId;
+    if (!sid) return;
+
+    let target = null, layer = null;
+    for (const l of state.artLayers) {
+        const s = l.shapes.find(s => s.id === sid);
+        if (s) { target = s; layer = l; break; }
+    }
+    if (!target) return;
+
+    const tpl = shapeToPolyline(target);
+    if (!tpl || tpl.pts.length < 2) return;
+
+    // Cutters = every other vector in visible layers.
+    const cutters = [];
+    for (const l of state.artLayers) {
+        if (!l.visible) continue;
+        for (const s of l.shapes) {
+            if (s.id === sid) continue;
+            const pl = shapeToPolyline(s);
+            if (pl && pl.pts.length >= 2) cutters.push(pl);
+        }
+    }
+
+    const cuts = crossingParams(tpl.pts, tpl.closed, cutters);
+    const pieces = trimSpanAt(tpl.pts, tpl.closed, cuts, [p.x, p.y]);
+    if (!pieces || !pieces.length) {
+        toast("Nothing to trim here — the vector must cross another at this spot.", true);
+        return;
+    }
+
+    snapshot();
+    const idx = layer.shapes.indexOf(target);
+    const made = pieces.map(pts => {
+        const sh = { id: uid("shape"), type: "polyline", points: pts };
+        if (target._stroke !== undefined) sh._stroke = target._stroke;
+        if (target._strokeWidth !== undefined) sh._strokeWidth = target._strokeWidth;
+        return sh;
+    });
+    layer.shapes.splice(idx, 1, ...made);
+    state.selectedShapeIds = new Set(made.map(s => s.id));
+    render();
 }

@@ -3,7 +3,7 @@
 import { state } from "./state.js";
 import { canvas } from "./dom.js";
 
-const TOOL_CLASSES = ["tool-select", "tool-rotate", "tool-scale", "tool-line", "tool-rect", "tool-ellipse", "tool-polyline", "tool-freehand"];
+const TOOL_CLASSES = ["tool-select", "tool-rotate", "tool-scale", "tool-line", "tool-rect", "tool-ellipse", "tool-polyline", "tool-freehand", "tool-scissors"];
 
 export function setTool(tool) {
     state.tool = tool;

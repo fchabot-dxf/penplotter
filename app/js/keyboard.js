@@ -11,6 +11,7 @@ import { exitTargetEditing } from "./toolpath-layers-panel.js";
 const TOOL_KEYS = {
     v: "select", t: "rotate", s: "scale",
     l: "line", r: "rect", e: "ellipse", p: "polyline", f: "freehand",
+    x: "scissors",
 };
 
 export function installKeyboard() {

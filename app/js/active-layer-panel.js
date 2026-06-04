@@ -3,7 +3,7 @@
 //   - Outline settings (for Outline toolpaths)
 //   - Fill settings (for Fill toolpaths)
 
-import { state, activeToolpath, penWidthFor } from "./state.js";
+import { state, activeToolpath } from "./state.js";
 import { $ } from "./dom.js";
 import { FILL_PATTERNS, PATTERN_OPTIONS } from "./fill/index.js";
 import { OUTLINE_STYLES, STYLE_OPTIONS } from "./outline/index.js";
@@ -70,30 +70,14 @@ export function renderActiveLayerPanel() {
     // Stash target IDs so the change handlers re-resolve through
     // state.toolpaths every time they fire. Holding direct references
     // is fragile across renders (and an undo could swap out the array).
-    const targetIds = targets.map(t => t.id);
     const sameTypeIds = sameTypeTargets.map(t => t.id);
     const tpType = tp.type;
 
-    const resolveTargets = () =>
-        state.toolpaths.filter(t => targetIds.includes(t.id));
     const resolveSameType = () =>
         state.toolpaths.filter(t => sameTypeIds.includes(t.id));
 
-    // Pen width is a property of the PEN — editing here sets the width of
-    // the selected toolpaths' pen(s), so every toolpath on that pen updates.
-    root.appendChild(subhead("Pen"));
-    root.appendChild(numberField("Pen width", "mm",
-        commonValue(targets, t => penWidthFor(t)),
-        0.05, 5, 0.05, (v) => {
-            snapshot();
-            const seen = new Set();
-            for (const t of resolveTargets()) {
-                const pen = state.plotColors.find(p => p.id === t.plotColorId);
-                if (pen) { if (!seen.has(pen.id)) { pen.width = v; seen.add(pen.id); } }
-                else t.penWidth = v; // unlinked toolpath keeps a local width
-            }
-            triggerRerender();
-        }));
+    // Pen width lives on the pen now (edit it in the Pens panel), so it's
+    // no longer shown here per-toolpath.
 
     if (tpType === "outline") {
         const outs = sameTypeTargets;

@@ -6,7 +6,7 @@ import { render } from "./render.js";
 import { snapshot } from "./history.js";
 import { closedPolygonFor } from "./fill/utils.js";
 import { unionPolygons } from "./clip.js";
-import { uiConfirm } from "./ui-dialog.js";
+import { uiConfirm, uiChoose } from "./ui-dialog.js";
 
 // group name → boolean (collapsed?)
 const collapsed = new Map();
@@ -304,7 +304,7 @@ export function installLayerButtons() {
 /** Boolean-union the selected shapes into a single path (their combined
  *  outline) via Clipper. The result lands in the layer of the first
  *  selected shape and inherits its fill/stroke styling. */
-function mergeSelectedShapes() {
+async function mergeSelectedShapes() {
     const ids = state.selectedShapeIds;
     if (!ids || ids.size < 2) { toast("Select 2 or more shapes to merge.", true); return; }
 
@@ -323,6 +323,16 @@ function mergeSelectedShapes() {
     const rings = unionPolygons(polys);
     if (!rings.length) { toast("Merge produced no geometry.", true); return; }
 
+    const mode = await uiChoose(
+        `Merge ${sel.length} shapes into one outline?`,
+        [
+            { value: "replace", label: "Replace the originals with the merged shape" },
+            { value: "keep", label: "Keep the originals and add the merged shape" },
+        ],
+        { defaultValue: "replace", okLabel: "Merge" },
+    );
+    if (!mode) return; // cancelled
+
     snapshot();
     const d = rings
         .map(r => "M " + r.map(p => `${p[0].toFixed(3)},${p[1].toFixed(3)}`).join(" L ") + " Z")
@@ -331,9 +341,11 @@ function mergeSelectedShapes() {
     for (const k of ["_fill", "_stroke", "_strokeWidth"]) {
         if (sel[0][k] !== undefined) merged[k] = sel[0][k];
     }
-    for (const l of state.artLayers) l.shapes = l.shapes.filter(s => !ids.has(s.id));
+    if (mode === "replace") {
+        for (const l of state.artLayers) l.shapes = l.shapes.filter(s => !ids.has(s.id));
+    }
     targetLayer.shapes.push(merged);
     state.selectedShapeIds = new Set([merged.id]);
     render();
-    toast(`Merged ${sel.length} shapes`);
+    toast(mode === "replace" ? `Merged ${sel.length} shapes` : `Merged ${sel.length} shapes (originals kept)`);
 }
