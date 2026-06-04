@@ -4,7 +4,7 @@
 import { state, uid, activeArtLayer, findShape, remapToolpathTargets } from "./state.js";
 import { canvas, coordsEl, SVG_NS, toast } from "./dom.js";
 import { screenToSvg, applyViewport } from "./viewport.js";
-import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, combinedBounds, shapeBounds, getNodes, setNodes } from "./shapes.js";
+import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, combinedBounds, shapeBounds, getNodes, setNodes, makeShapeElement } from "./shapes.js";
 import { gatherSnapCandidates, shapeVertices, findSnapDelta } from "./snapping.js";
 import { resolveToolpathShapes } from "./preview.js";
 import { syncTargetEditingSelection } from "./toolpath-layers-panel.js";
@@ -87,6 +87,13 @@ function onMove(e) {
     // Node edit: highlight the node a click would delete.
     if (state.tool === "node" && !state.interaction && isSvgMode()) {
         updateNodeHover(e, p);
+        return;
+    }
+    // Select: VCarve-style hover ghost of exactly what a click will select —
+    // pink for a toolpath (toolpath/sim view), black for an SVG shape. It's an
+    // overlay only; the faint artwork underneath is left as-is.
+    if (state.tool === "select" && !state.interaction) {
+        updateSelectHover(e, p);
         return;
     }
 
@@ -218,6 +225,7 @@ function onDblClick() {
 
 // -------- select --------
 function startSelect(e, p) {
+    removePreview(); // drop the hover ghost as the click resolves
     // In toolpath mode, clicking a polyline activates its toolpath
     // instead of selecting an underlying shape. Shift-click toggles
     // multi-selection; empty-area drag starts a box-select that picks
@@ -768,4 +776,54 @@ function doNodeEdit(e, p) {
     state.selectedShapeIds = sid ? new Set([sid]) : new Set();
     removePreview();
     render();
+}
+
+// ----- select hover ghost -----
+
+const GHOST_TOOLPATH = "#ff2e88"; // pink
+const GHOST_SHAPE = "#111111";    // black
+const GHOST_OPACITY = "0.65";
+
+function ghostElement(shape, color) {
+    const el = makeShapeElement(shape);
+    // Inline styles so they win over the .preview class showPreview adds.
+    el.style.fill = color;
+    el.style.stroke = "none";
+    el.style.strokeDasharray = "none";
+    el.style.pointerEvents = "none";
+    return el;
+}
+
+/** Toolpath id under the cursor, walking up from the event target. */
+function toolpathIdAt(e) {
+    let n = e.target;
+    while (n && n !== canvas) {
+        if (n.dataset && n.dataset.toolpathId) return n.dataset.toolpathId;
+        n = n.parentNode;
+    }
+    return null;
+}
+
+/** Hover preview for the Select tool: a translucent ghost of what a click
+ *  would select — pink toolpath in toolpath/sim view, black shape in SVG
+ *  view. Pure overlay; doesn't touch the base artwork opacity. */
+function updateSelectHover(e) {
+    if (state.preview.showToolpath) {
+        const tpid = toolpathIdAt(e);
+        const tp = tpid && state.toolpaths.find(t => t.id === tpid);
+        const shapes = tp ? resolveToolpathShapes(tp) : [];
+        if (!shapes.length) { removePreview(); return; }
+        const g = document.createElementNS(SVG_NS, "g");
+        g.style.opacity = GHOST_OPACITY;
+        g.style.pointerEvents = "none";
+        for (const s of shapes) g.appendChild(ghostElement(s, GHOST_TOOLPATH));
+        showPreview(g);
+        return;
+    }
+    const sid = e.target.dataset && e.target.dataset.shapeId;
+    const shape = sid && findShape(sid);
+    if (!shape) { removePreview(); return; }
+    const el = ghostElement(shape, GHOST_SHAPE);
+    el.style.opacity = GHOST_OPACITY;
+    showPreview(el);
 }
