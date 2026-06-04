@@ -53,6 +53,21 @@ export function installSettingsPanel() {
         applyViewport(); // refresh the dimension/zoom status text (keeps zoom)
     });
 
+    // Document settings live in a modal opened by clicking the dimension
+    // readout in the status bar. Backdrop click / ✕ / Esc close it.
+    const docInfo = $("#docInfo"), docModal = $("#docModal"), docClose = $("#docModalClose");
+    if (docInfo && docModal) {
+        docInfo.style.cursor = "pointer";
+        docInfo.title = "Document settings";
+        const closeDoc = () => { docModal.style.display = "none"; };
+        docInfo.addEventListener("click", () => { docModal.style.display = "flex"; });
+        if (docClose) docClose.addEventListener("click", closeDoc);
+        docModal.addEventListener("mousedown", (e) => { if (e.target === docModal) closeDoc(); });
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && docModal.style.display !== "none") closeDoc();
+        });
+    }
+
     $("#docW").addEventListener("change", (e) => {
         state.doc.w = Math.round(fromDisplay(+e.target.value) * 100) / 100; fitViewport(); render();
     });

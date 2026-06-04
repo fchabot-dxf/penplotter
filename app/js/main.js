@@ -17,7 +17,7 @@ import { installHistory } from "./history.js";
 import { installStylePanel } from "./style-panel.js";
 import { installPlotColorsPanel } from "./plot-colors-panel.js";
 import { installCloudPanel } from "./cloud-panel.js";
-import { installMobileLayout } from "./mobile.js";
+import { installMobileLayout, installPanelSplitters } from "./mobile.js";
 
 async function boot() {
     installToolbar();
@@ -35,6 +35,7 @@ async function boot() {
     installCloudPanel();
     installStylePanel();
     installMobileLayout();
+    installPanelSplitters();
     installHistory(() => { render(); renderActiveLayerPanel(); });
     // Active-layer panel triggers a full re-render so the canvas reflects
     // outline/fill changes immediately (and the preview cache invalidates).

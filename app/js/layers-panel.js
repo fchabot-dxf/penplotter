@@ -181,7 +181,7 @@ function roleRow(roleBucket, colorBucket, group) {
 
 function shapeRow(shape, roleBucket, colorBucket, group) {
     const row = document.createElement("div");
-    row.className = "layer-row indented";
+    row.className = "layer-row indented shape-leaf";
     row.style.paddingLeft = "48px";
     if (state.selectedShapeIds.has(shape.id)) row.classList.add("active");
 

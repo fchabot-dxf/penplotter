@@ -61,4 +61,9 @@ export function cancelInteraction() {
 
 export function installToolbar() {
     document.querySelectorAll(".tool").forEach(b => b.onclick = () => setTool(b.dataset.tool));
+    // Float the tool stack over the canvas (works in both desktop and the
+    // stacked mobile layout, since the canvas wrap is the canvas in both).
+    const wrap = document.getElementById("canvasWrap");
+    const tools = document.getElementById("allTools");
+    if (wrap && tools && tools.parentNode !== wrap) wrap.appendChild(tools);
 }

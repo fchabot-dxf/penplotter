@@ -41,3 +41,38 @@ export function installMobileLayout() {
     window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
 }
+
+/** Desktop: drag the dividers flanking the canvas to resize the side panels.
+ *  Each handle drives one grid column var (--left-w / --right-w). */
+export function installPanelSplitters() {
+    const app = $("#app");
+    if (!app) return;
+
+    const wire = (id, varName, fromRight) => {
+        const handle = $("#" + id);
+        if (!handle) return;
+        let raf = 0;
+        const applyAt = (clientX) => {
+            const rect = app.getBoundingClientRect();
+            const raw = fromRight ? rect.right - clientX : clientX - rect.left;
+            const w = Math.max(160, Math.min(rect.width - 360, raw));
+            app.style.setProperty(varName, w + "px");
+            if (!raf) raf = requestAnimationFrame(() => { raf = 0; fitViewport(); render(); });
+        };
+        const onMove = (e) => applyAt(e.clientX);
+        const onUp = () => {
+            handle.classList.remove("dragging");
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+        };
+        handle.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
+            handle.classList.add("dragging");
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+        });
+    };
+
+    wire("vsplitLeft", "--left-w", false);
+    wire("vsplitRight", "--right-w", true);
+}
