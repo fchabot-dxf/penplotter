@@ -265,7 +265,7 @@ export function buildToolpathOverlay() {
                 const travel = document.createElementNS(SVG_NS, "line");
                 travel.setAttribute("x1", tx); travel.setAttribute("y1", ty);
                 travel.setAttribute("x2", sx); travel.setAttribute("y2", sy);
-                travel.setAttribute("stroke", "#888");
+                travel.setAttribute("stroke", "#22c55e"); // travel moves: green
                 travel.setAttribute("stroke-width", "0.2");
                 travel.setAttribute("stroke-dasharray", "1.5 1.5");
                 travel.setAttribute("vector-effect", "non-scaling-stroke");
