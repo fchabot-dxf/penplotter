@@ -13,10 +13,10 @@ const DEBOUNCE_MS = 350;
 
 // Resting toolpath colour in the diagnostic (non-simulation) overlay. The
 // pen colour usually matches the artwork it traces, so drawing in the pen
-// colour makes the path vanish on top of the full-opacity SVG — use one
-// distinct "machine path" blue instead. (Pink stays the hover/selected cue;
-// real pen colours show in the simulation view + Pens panel.)
-const TP_DIAG_COLOR = "#1f9cff";
+// colour makes the path vanish on top of the full-opacity SVG. Use pink
+// throughout — thin solid when idle, heavier/dashed on hover & select.
+// (Real pen colours show in the simulation view + the Pens panel.)
+const TP_DIAG_COLOR = "#ff2e88";
 
 // ---- cache state (also stored on `state.preview` for visibility) ----
 state.preview.cache = state.preview.cache || {
@@ -257,11 +257,9 @@ export function buildToolpathOverlay() {
 
             const poly = document.createElementNS(SVG_NS, "polyline");
             poly.setAttribute("points", stroke.map(p => `${p[0]},${p[1]}`).join(" "));
-            // Constant diagnostic width regardless of selection — the
-            // blue halo behind communicates selection without altering
-            // the plot color or thickness. Drawn over the (full-opacity)
-            // artwork now, so a touch thicker to stand out clearly.
-            poly.setAttribute("stroke-width", "1.2");
+            // Thin idle line; hover (2.4) and selected-dashes (1.2) sit
+            // heavier on top so the touched/selected path reads clearly.
+            poly.setAttribute("stroke-width", "0.8");
             poly.setAttribute("vector-effect", "non-scaling-stroke");
             poly.setAttribute("opacity", "0.95");
             poly.setAttribute("pointer-events", "none");
