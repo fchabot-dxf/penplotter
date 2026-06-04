@@ -2,7 +2,7 @@
 
 import { state } from "./state.js";
 import { canvas, SVG_NS, $ } from "./dom.js";
-import { makeShapeElement, combinedBounds } from "./shapes.js";
+import { makeShapeElement, combinedBounds, getNodes } from "./shapes.js";
 import { findShape } from "./state.js";
 import { renderLayersPanel } from "./layers-panel.js";
 import { renderToolpathLayersPanel } from "./toolpath-layers-panel.js";
@@ -48,6 +48,13 @@ export function render() {
     // no fill to tint, so a halo on top would just obscure them.
     if (state.selectedShapeIds.size > 0) {
         canvas.appendChild(buildSelectionOverlay());
+    }
+
+    // Node-edit handles — show every node of the selected shape so the
+    // user can see and click them.
+    if (state.tool === "node" && state.selectedShapeIds.size === 1) {
+        const h = buildNodeHandles();
+        if (h) canvas.appendChild(h);
     }
 
     // Toolpath view — single overlay. When simulatePens is on it renders
@@ -170,6 +177,27 @@ function buildSnapMarker([x, y]) {
     c2.setAttribute("cx", x); c2.setAttribute("cy", y); c2.setAttribute("r", "0.4");
     c2.setAttribute("fill", "#ff9500");
     g.appendChild(c2);
+    return g;
+}
+
+/** Dots at every node of the single selected shape, for the node-edit
+ *  tool. Radius is in user units scaled to stay ~constant on screen. */
+function buildNodeHandles() {
+    const sid = [...state.selectedShapeIds][0];
+    const shape = findShape(sid);
+    if (!shape) return null;
+    const nodes = getNodes(shape);
+    if (!nodes) return null;
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("pointer-events", "none");
+    const r = 4 / Math.max(0.001, state.viewport.scale);
+    for (const [x, y] of nodes.pts) {
+        const c = document.createElementNS(SVG_NS, "circle");
+        c.setAttribute("cx", x); c.setAttribute("cy", y);
+        c.setAttribute("r", r);
+        c.setAttribute("class", "node-handle");
+        g.appendChild(c);
+    }
     return g;
 }
 

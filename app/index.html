@@ -388,6 +388,7 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
 .canvas-svg.tool-line, .canvas-svg.tool-rect, .canvas-svg.tool-ellipse,
 .canvas-svg.tool-polyline, .canvas-svg.tool-freehand { cursor: crosshair; }
 .canvas-svg.tool-scissors { cursor: crosshair; }
+.canvas-svg.tool-node { cursor: pointer; }
 .canvas-svg.tool-select { cursor: default; }
 .canvas-svg.tool-rotate, .canvas-svg.tool-scale { cursor: grab; }
 .canvas-svg.panning { cursor: grab; }
@@ -404,6 +405,12 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
    so unstroked (fill-only) shapes still get visible feedback. */
 .shape:hover { filter: drop-shadow(0 0 0.6px var(--accent-hi)) drop-shadow(0 0 0.4px var(--accent-hi)); }
 .preview { stroke: #888; stroke-dasharray: 3 3; fill: none; stroke-width: 0.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+/* Scissors hover: the span that a click would snip, drawn solid red. */
+.preview.trim-cut { stroke: #ff3b30; stroke-width: 3; stroke-dasharray: none; opacity: 0.9; stroke-linecap: round; }
+/* Node-edit hover: ring the node a click would delete. */
+.preview.node-hi { fill: #ff3b30; fill-opacity: 0.45; stroke: #ff3b30; stroke-width: 1.5; stroke-dasharray: none; vector-effect: non-scaling-stroke; }
+/* Node-edit handles: every node of the selected shape. */
+.node-handle { fill: #fff; stroke: var(--accent-hi); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 
 /* ===== toolpath overlay hover / active highlights =====
    .tp-group wraps each toolpath in the toolpath/simulation overlay.
@@ -636,6 +643,15 @@ body[data-mode="simulation"] .mode-toolpath-only { display: none; }
                 <button class="tool active" data-tool="select" title="Select (V) — click a shape; drag empty area for marquee; shift to add">
                     <svg viewBox="0 0 18 18" width="14" height="14" fill="currentColor">
                         <path d="M4 2 L4 14 L7.2 11.2 L9.4 15.5 L11.4 14.5 L9.3 10.3 L13 10.3 Z"/>
+                    </svg>
+
+                </button>
+                <button class="tool mode-svg-only" data-tool="node" title="Node edit (N) — click a node to delete it; the path closes back up">
+                    <svg viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3,13 8,5 14,11"/>
+                        <rect x="1.7" y="11.7" width="2.6" height="2.6" fill="currentColor" stroke="none"/>
+                        <rect x="6.7" y="3.7" width="2.6" height="2.6" fill="currentColor" stroke="none"/>
+                        <rect x="12.7" y="9.7" width="2.6" height="2.6" fill="currentColor" stroke="none"/>
                     </svg>
 
                 </button>

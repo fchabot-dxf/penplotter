@@ -3,7 +3,7 @@
 import { state } from "./state.js";
 import { canvas } from "./dom.js";
 
-const TOOL_CLASSES = ["tool-select", "tool-rotate", "tool-scale", "tool-line", "tool-rect", "tool-ellipse", "tool-polyline", "tool-freehand", "tool-scissors"];
+const TOOL_CLASSES = ["tool-select", "tool-rotate", "tool-scale", "tool-line", "tool-rect", "tool-ellipse", "tool-polyline", "tool-freehand", "tool-scissors", "tool-node"];
 
 export function setTool(tool) {
     state.tool = tool;
@@ -13,6 +13,7 @@ export function setTool(tool) {
         b.classList.toggle("active", b.dataset.tool === tool)
     );
     if (state.interaction) cancelInteraction();
+    removePreview(); // clear any scissors hover highlight when switching tools
 }
 
 let previewEl = null;

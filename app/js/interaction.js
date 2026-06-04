@@ -4,12 +4,12 @@
 import { state, uid, activeArtLayer, findShape } from "./state.js";
 import { canvas, coordsEl, SVG_NS, toast } from "./dom.js";
 import { screenToSvg, applyViewport } from "./viewport.js";
-import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, combinedBounds, shapeBounds } from "./shapes.js";
+import { translateShape, rotateShape, scaleShape, shapeCenter, deepCopyShape, combinedBounds, shapeBounds, getNodes, setNodes } from "./shapes.js";
 import { gatherSnapCandidates, shapeVertices, findSnapDelta } from "./snapping.js";
 import { resolveToolpathShapes } from "./preview.js";
 import { syncTargetEditingSelection } from "./toolpath-layers-panel.js";
 import { closedPolygonFor } from "./fill/utils.js";
-import { crossingParams, trimSpanAt } from "./trim.js";
+import { crossingParams, trimSpanAt, removedSpanAt } from "./trim.js";
 
 // Snap threshold is in SCREEN pixels — converted to mm per drag frame
 // using the current viewport scale. That way a snap engages at a constant
@@ -65,6 +65,7 @@ function onDown(e) {
     if (state.tool === "rotate") return startRotate(e, p);
     if (state.tool === "scale")  return startScale(e, p);
     if (state.tool === "scissors") return doScissors(e, p);
+    if (state.tool === "node") return doNodeEdit(e, p);
 
     const layer = activeArtLayer();
     if (!layer) return;
@@ -77,6 +78,17 @@ function onDown(e) {
 function onMove(e) {
     const p = screenToSvg(e.clientX, e.clientY);
     coordsEl.textContent = `${p.x.toFixed(2)}, ${p.y.toFixed(2)} mm`;
+
+    // Scissors: highlight the span that a click would snip, as you hover.
+    if (state.tool === "scissors" && !state.interaction && isSvgMode()) {
+        updateTrimHover(e, p);
+        return;
+    }
+    // Node edit: highlight the node a click would delete.
+    if (state.tool === "node" && !state.interaction && isSvgMode()) {
+        updateNodeHover(e, p);
+        return;
+    }
 
     const it = state.interaction;
     if (!it) return;
@@ -618,24 +630,19 @@ function shapeToPolyline(shape) {
     return { pts, closed: true };
 }
 
-/** Scissors: snip the clicked vector, removing the span between its two
- *  nearest crossings with other visible vectors. The remainder stays as
- *  open polyline(s). */
-function doScissors(e, p) {
+/** Resolve the hovered/clicked shape + its cutters (every other visible
+ *  vector) for the scissors tool. Returns null when not over a shape. */
+function trimContext(e) {
     const sid = e.target.dataset && e.target.dataset.shapeId;
-    if (!sid) return;
-
+    if (!sid) return null;
     let target = null, layer = null;
     for (const l of state.artLayers) {
         const s = l.shapes.find(s => s.id === sid);
         if (s) { target = s; layer = l; break; }
     }
-    if (!target) return;
-
+    if (!target) return null;
     const tpl = shapeToPolyline(target);
-    if (!tpl || tpl.pts.length < 2) return;
-
-    // Cutters = every other vector in visible layers.
+    if (!tpl || tpl.pts.length < 2) return null;
     const cutters = [];
     for (const l of state.artLayers) {
         if (!l.visible) continue;
@@ -645,6 +652,29 @@ function doScissors(e, p) {
             if (pl && pl.pts.length >= 2) cutters.push(pl);
         }
     }
+    return { target, layer, tpl, cutters };
+}
+
+/** Hover feedback: draw the span the click would snip, in red. */
+function updateTrimHover(e, p) {
+    const ctx = trimContext(e);
+    if (!ctx) { removePreview(); return; }
+    const cuts = crossingParams(ctx.tpl.pts, ctx.tpl.closed, ctx.cutters);
+    const span = removedSpanAt(ctx.tpl.pts, ctx.tpl.closed, cuts, [p.x, p.y]);
+    if (!span || span.length < 2) { removePreview(); return; }
+    const el = document.createElementNS(SVG_NS, "polyline");
+    el.setAttribute("points", span.map(pt => `${pt[0]},${pt[1]}`).join(" "));
+    el.classList.add("trim-cut");
+    showPreview(el);
+}
+
+/** Scissors: snip the clicked vector, removing the span between its two
+ *  nearest crossings with other visible vectors. The remainder stays as
+ *  open polyline(s); a closed shape re-closes across the cut. */
+function doScissors(e, p) {
+    const ctx = trimContext(e);
+    if (!ctx) return;
+    const { target, layer, tpl, cutters } = ctx;
 
     const cuts = crossingParams(tpl.pts, tpl.closed, cutters);
     const pieces = trimSpanAt(tpl.pts, tpl.closed, cuts, [p.x, p.y]);
@@ -653,6 +683,7 @@ function doScissors(e, p) {
         return;
     }
 
+    removePreview();
     snapshot();
     const idx = layer.shapes.indexOf(target);
     const made = pieces.map(piece => {
@@ -668,5 +699,72 @@ function doScissors(e, p) {
     });
     layer.shapes.splice(idx, 1, ...made);
     state.selectedShapeIds = new Set(made.map(s => s.id));
+    render();
+}
+
+// ----- node edit -----
+
+const NODE_PICK_PX = 12;
+
+function nearestNode(pts, pt) {
+    let bi = -1, bd = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+        const d = Math.hypot(pts[i][0] - pt[0], pts[i][1] - pt[1]);
+        if (d < bd) { bd = d; bi = i; }
+    }
+    return { i: bi, d: bd };
+}
+
+/** The single shape currently selected for node editing (must be node-
+ *  editable), with its node list — or null. */
+function selectedNodeShape() {
+    if (state.selectedShapeIds.size !== 1) return null;
+    const sid = [...state.selectedShapeIds][0];
+    for (const l of state.artLayers) {
+        const s = l.shapes.find(x => x.id === sid);
+        if (s) { const nodes = getNodes(s); return nodes ? { shape: s, layer: l, nodes } : null; }
+    }
+    return null;
+}
+
+/** Hover feedback: ring the node a click would delete (on the selected
+ *  shape, whose nodes are all shown as handles). */
+function updateNodeHover(e, p) {
+    const sel = selectedNodeShape();
+    if (!sel) { removePreview(); return; }
+    const thr = NODE_PICK_PX / Math.max(0.001, state.viewport.scale);
+    const nn = nearestNode(sel.nodes.pts, [p.x, p.y]);
+    if (nn.i < 0 || nn.d > thr) { removePreview(); return; }
+    const c = sel.nodes.pts[nn.i];
+    const el = document.createElementNS(SVG_NS, "circle");
+    el.setAttribute("cx", c[0]); el.setAttribute("cy", c[1]);
+    el.setAttribute("r", Math.max(0.4, thr * 0.45));
+    el.classList.add("node-hi");
+    showPreview(el);
+}
+
+/** Node tool click: if a node of the selected shape is under the cursor,
+ *  delete it (neighbours join straight; closed stays closed). Otherwise
+ *  select the shape under the cursor so all its nodes show as handles. */
+function doNodeEdit(e, p) {
+    const sel = selectedNodeShape();
+    if (sel) {
+        const thr = NODE_PICK_PX / Math.max(0.001, state.viewport.scale);
+        const nn = nearestNode(sel.nodes.pts, [p.x, p.y]);
+        if (nn.i >= 0 && nn.d <= thr) {
+            const minNodes = sel.nodes.closed ? 3 : 2;
+            if (sel.nodes.pts.length <= minNodes) { toast("Can't delete — too few nodes left.", true); return; }
+            snapshot();
+            sel.nodes.pts.splice(nn.i, 1);
+            setNodes(sel.shape, sel.nodes.pts, sel.nodes.closed);
+            removePreview();
+            render();
+            return;
+        }
+    }
+    // Not on a node → (re)select the shape under the cursor to edit it.
+    const sid = e.target.dataset && e.target.dataset.shapeId;
+    state.selectedShapeIds = sid ? new Set([sid]) : new Set();
+    removePreview();
     render();
 }

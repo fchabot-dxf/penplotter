@@ -101,38 +101,49 @@ function slicePath(pts, closed, from, to) {
     return clean;
 }
 
-/** Remove the span of the path containing the click. Returns an array of
- *  resulting open point-lists (0, 1, or 2 pieces). */
-export function trimSpanAt(pts, closed, cutParams, clickPt) {
+/** Bounds {from,to} of the span the click falls in (the part that gets
+ *  removed). For a closed path the span wraps via the last→first cut. */
+function spanAt(pts, closed, cutParams, clickPt) {
     if (cutParams.length < 2) return null; // nothing bounding a cut
     const click = nearestParam(pts, closed, clickPt);
     const n = segCount(pts, closed);
-
     if (closed) {
-        // Find the consecutive cut pair (a,b) the click falls between,
-        // wrapping the last span back to the first cut.
         for (let i = 0; i < cutParams.length; i++) {
             const a = cutParams[i];
             const b = i + 1 < cutParams.length ? cutParams[i + 1] : cutParams[0] + n;
             const c = i + 1 < cutParams.length ? click : (click < cutParams[0] ? click + n : click);
-            if (c >= a && c <= b) {
-                // Keep the complement: from b around to a (+n).
-                const piece = slicePath(pts, closed, b, a + n);
-                return piece.length >= 2 ? [piece] : null;
-            }
+            if (c >= a && c <= b) return { from: a, to: b, n, closed: true };
         }
         return null;
     }
-
-    // Open path: bound the click by cuts, plus the path ends (0 and n).
     const bounds = [0, ...cutParams, n];
     for (let i = 0; i < bounds.length - 1; i++) {
-        if (click >= bounds[i] && click <= bounds[i + 1]) {
-            const pieces = [];
-            if (bounds[i] > 1e-6) pieces.push(slicePath(pts, closed, 0, bounds[i]));
-            if (bounds[i + 1] < n - 1e-6) pieces.push(slicePath(pts, closed, bounds[i + 1], n));
-            return pieces.filter(p => p.length >= 2);
-        }
+        if (click >= bounds[i] && click <= bounds[i + 1]) return { from: bounds[i], to: bounds[i + 1], n, closed: false };
     }
     return null;
+}
+
+/** The points of the span that WOULD be removed at the click — for the
+ *  hover highlight. Returns null if there's no bounded span here. */
+export function removedSpanAt(pts, closed, cutParams, clickPt) {
+    const s = spanAt(pts, closed, cutParams, clickPt);
+    if (!s) return null;
+    const piece = slicePath(pts, closed, s.from, s.to);
+    return piece.length >= 2 ? piece : null;
+}
+
+/** Remove the span of the path containing the click. Returns an array of
+ *  the resulting (open) point-lists kept — 0, 1, or 2 pieces. */
+export function trimSpanAt(pts, closed, cutParams, clickPt) {
+    const s = spanAt(pts, closed, cutParams, clickPt);
+    if (!s) return null;
+    if (s.closed) {
+        // Keep the complement: from the span end around to its start (+n).
+        const piece = slicePath(pts, closed, s.to, s.from + s.n);
+        return piece.length >= 2 ? [piece] : null;
+    }
+    const pieces = [];
+    if (s.from > 1e-6) pieces.push(slicePath(pts, closed, 0, s.from));
+    if (s.to < s.n - 1e-6) pieces.push(slicePath(pts, closed, s.to, s.n));
+    return pieces.filter(p => p.length >= 2);
 }

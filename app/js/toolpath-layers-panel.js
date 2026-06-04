@@ -241,8 +241,11 @@ function toolpathRow(toolpath, penColor) {
     nameSpan.style.overflow = "hidden";
     nameSpan.style.textOverflow = "ellipsis";
     nameSpan.style.whiteSpace = "nowrap";
-    nameSpan.ondblclick = (e) => {
-        e.stopPropagation();
+    // Double-clicking the name (or anywhere on the row) edits the target
+    // shapes — the natural gesture. Rename moved to the ✎ icon.
+    nameSpan.ondblclick = (e) => { e.stopPropagation(); enterTargetEditing(toolpath); };
+
+    const beginRename = () => {
         const input = document.createElement("input");
         input.value = toolpath.name;
         input.style.background = "var(--panel-2)";
@@ -266,6 +269,15 @@ function toolpathRow(toolpath, penColor) {
         input.focus();
         input.select();
     };
+
+    const ren = document.createElement("span");
+    ren.className = "ren";
+    ren.innerHTML = "✎";
+    ren.title = "Rename toolpath";
+    ren.style.cursor = "pointer";
+    ren.style.fontSize = "10px";
+    ren.style.color = "var(--text-dim)";
+    ren.onclick = (e) => { e.stopPropagation(); beginRename(); };
 
     const del = document.createElement("span");
     del.className = "del";
@@ -324,8 +336,6 @@ function toolpathRow(toolpath, penColor) {
     // subsequent shape pick / marquee writes back to tp.targetShapeIds
     // live. Esc or clicking another toolpath exits.
     row.ondblclick = (e) => {
-        // nameSpan's own ondblclick stops propagation, so this only
-        // fires for double-clicks outside the rename area.
         e.stopPropagation();
         enterTargetEditing(toolpath);
     };
@@ -337,9 +347,9 @@ function toolpathRow(toolpath, penColor) {
     handle.title = "Drag to reorder";
 
     row.style.display = "grid";
-    row.style.gridTemplateColumns = "12px 14px 12px 1fr 14px";
+    row.style.gridTemplateColumns = "12px 14px 12px 1fr 14px 14px";
     row.style.gap = "6px";
-    row.append(handle, exp, sw, nameSpan, del);
+    row.append(handle, exp, sw, nameSpan, ren, del);
     return row;
 }
 

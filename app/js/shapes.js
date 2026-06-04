@@ -3,6 +3,42 @@
 
 import { SVG_NS } from "./dom.js";
 
+const samePt = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6;
+
+/** Editable node list for a shape: { pts, closed, kind } or null. Supports
+ *  polylines and straight (M/L/Z-only) paths — the kinds whose vertices map
+ *  cleanly to points. Used by the node-edit tool. */
+export function getNodes(shape) {
+    if (shape.type === "polyline") {
+        const pts = shape.points.map(p => [p[0], p[1]]);
+        let closed = false;
+        if (pts.length > 2 && samePt(pts[0], pts[pts.length - 1])) { pts.pop(); closed = true; }
+        return { pts, closed, kind: "polyline" };
+    }
+    if (shape.type === "path" && shape.d && !/[cCsSqQtTaA]/.test(shape.d)) {
+        const nums = (shape.d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || []).map(Number);
+        const pts = [];
+        for (let i = 0; i + 1 < nums.length; i += 2) pts.push([nums[i], nums[i + 1]]);
+        if (pts.length < 2) return null;
+        let closed = /[zZ]/.test(shape.d);
+        if (pts.length > 2 && samePt(pts[0], pts[pts.length - 1])) { pts.pop(); closed = true; }
+        return { pts, closed, kind: "path" };
+    }
+    return null;
+}
+
+/** Write an edited node list back onto the shape, preserving its kind and
+ *  re-closing if it was closed. */
+export function setNodes(shape, pts, closed) {
+    if (shape.type === "polyline") {
+        shape.points = closed ? [...pts.map(p => [p[0], p[1]]), [pts[0][0], pts[0][1]]] : pts.map(p => [p[0], p[1]]);
+    } else { // straight path
+        let d = "M " + pts.map(p => `${p[0]},${p[1]}`).join(" L ");
+        if (closed) d += " Z";
+        shape.d = d;
+    }
+}
+
 export function makeShapeElement(shape) {
     let el;
     switch (shape.type) {
