@@ -160,6 +160,9 @@ function roleRow(roleBucket, colorBucket, group) {
     const row = document.createElement("div");
     row.className = "group-row indented";
     row.style.paddingLeft = "32px";
+    // No swatch on role rows — drop the swatch column so the name gets the
+    // wide cell instead of being squeezed into 14px and clipped ("f..").
+    row.style.gridTemplateColumns = "12px 1fr auto";
 
     const isCollapsed = !!collapsed.get(roleBucket.id);
     const chevron = document.createElement("span");
