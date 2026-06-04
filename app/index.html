@@ -483,20 +483,12 @@ body.target-editing [data-layer-id] { opacity: 0.6 !important; }
 .node-handle { fill: #fff; stroke: var(--accent-hi); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .node-handle.active { fill: var(--accent-hi); stroke: #fff; stroke-width: 1.6; }
 
-/* ===== toolpath overlay hover / active highlights =====
+/* ===== toolpath overlay hit geometry =====
    .tp-group wraps each toolpath in the toolpath/simulation overlay.
    .tp-hit holds invisible click geometry (shape area for fills, thick
-   transparent strokes for outlines); .tp-visible holds the drawn lines.
-   On :hover the visible strokes pop to make the target obvious. */
-/* Hover feedback is a SEPARATE tint layer, not a restyle of the ink.
-   .tp-hit (normally-invisible click geometry: the shape interior for
-   fills, thick strokes for outlines) is painted in the toolpath colour
-   and fades in translucent on hover. The actual pen strokes (.tp-visible)
-   stay solid and untouched — what you see is exactly what plots — while
-   the tint alone says "you're about to click this". Selection still uses
-   the .tp-halo translucent-blue layer drawn underneath (preview.js). */
-.tp-hit > * { transition: fill-opacity 0.06s ease, stroke-opacity 0.06s ease; }
-.tp-group:hover .tp-hit > * { fill-opacity: 0.3; stroke-opacity: 0.55; }
+   transparent strokes for outlines) — kept fully transparent. Hover
+   feedback comes solely from the Select tool's pink ghost (interaction.js);
+   no tint glow behind the path. */
 .status {
     position: absolute; bottom: 8px; left: 8px; right: 8px;
     color: var(--text-dim); font-size: 11px; pointer-events: none;

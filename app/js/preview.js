@@ -175,6 +175,25 @@ export function buildToolpathOverlay() {
     overlay.setAttribute("data-overlay", "toolpath");
     overlay.setAttribute("fill", "none");
 
+    // Direction arrow placed at the start of each stroke (marker-start).
+    // orient="auto" rotates it to the first segment, so it signals where
+    // the pen starts AND which way the path runs.
+    const defs = document.createElementNS(SVG_NS, "defs");
+    const marker = document.createElementNS(SVG_NS, "marker");
+    marker.setAttribute("id", "tpStartArrow");
+    marker.setAttribute("orient", "auto");
+    marker.setAttribute("markerUnits", "userSpaceOnUse");
+    marker.setAttribute("markerWidth", "2.4");
+    marker.setAttribute("markerHeight", "2.4");
+    marker.setAttribute("refX", "0");
+    marker.setAttribute("refY", "1.2");
+    const tri = document.createElementNS(SVG_NS, "path");
+    tri.setAttribute("d", "M0,0 L2.4,1.2 L0,2.4 Z");
+    tri.setAttribute("fill", TP_DIAG_COLOR);
+    marker.appendChild(tri);
+    defs.appendChild(marker);
+    overlay.appendChild(defs);
+
     const cache = state.preview.cache;
     let stats = { strokeCount: 0, drawDist: 0, travelDist: 0,
                   fetching: cache.fetching, error: cache.error };
@@ -263,16 +282,8 @@ export function buildToolpathOverlay() {
             poly.setAttribute("vector-effect", "non-scaling-stroke");
             poly.setAttribute("opacity", "0.95");
             poly.setAttribute("pointer-events", "none");
+            poly.setAttribute("marker-start", "url(#tpStartArrow)");
             visibleG.appendChild(poly);
-
-            const dot = document.createElementNS(SVG_NS, "circle");
-            dot.setAttribute("cx", stroke[0][0]);
-            dot.setAttribute("cy", stroke[0][1]);
-            dot.setAttribute("r", "0.3");
-            dot.setAttribute("fill", color);
-            dot.setAttribute("stroke", "none");
-            dot.setAttribute("pointer-events", "none");
-            visibleG.appendChild(dot);
 
             stats.drawDist += strokeLength(stroke);
             stats.strokeCount++;
