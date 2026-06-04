@@ -65,6 +65,11 @@ html, body {
     .panel .layers, .panel #plotColors, .panel #toolpathLayers {
         max-height: none !important; overflow: visible !important;
     }
+    /* The tabs switch SVG/Toolpath on mobile, so the in-canvas SVG/Toolpath
+       buttons are redundant — only the simulate toggle (toolpath view) is
+       left, and the whole strip hides in svg view. */
+    .view-toggles #toggleSvg, .view-toggles #toggleToolpath { display: none; }
+    body[data-mode="svg"] .view-toggles { display: none; }
     body:not(.mtab-toolpath) .panel.right { display: none; }
     body.mtab-toolpath .panel:not(.right) { display: none; }
 }
@@ -548,6 +553,8 @@ body[data-mode="simulation"] .mode-svg-only { display: none; }
 body[data-mode="svg"]        .mode-plot-only,
 body[data-mode="svg"]        .mode-toolpath-only { display: none; }
 body[data-mode="simulation"] .mode-toolpath-only { display: none; }
+/* The pen-width simulation toggle only makes sense in toolpath view. */
+body[data-mode="svg"] #toggleSimPens { display: none; }
 
 /* tool icons */
 .tool svg { display: block; }
