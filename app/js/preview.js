@@ -11,6 +11,13 @@ import { expandLayerOutline } from "./outline/index.js";
 
 const DEBOUNCE_MS = 350;
 
+// Resting toolpath colour in the diagnostic (non-simulation) overlay. The
+// pen colour usually matches the artwork it traces, so drawing in the pen
+// colour makes the path vanish on top of the full-opacity SVG — use one
+// distinct "machine path" blue instead. (Pink stays the hover/selected cue;
+// real pen colours show in the simulation view + Pens panel.)
+const TP_DIAG_COLOR = "#1f9cff";
+
 // ---- cache state (also stored on `state.preview` for visibility) ----
 state.preview.cache = state.preview.cache || {
     polylineLayers: [],       // [{ id, name, strokes: [[[x,y],...]] }]
@@ -176,7 +183,7 @@ export function buildToolpathOverlay() {
     for (const layer of cache.polylineLayers) {
         const tp = findToolpath(layer);
         if (tp && !tp.visible) continue;
-        const color = toolpathColor(tp);
+        const color = TP_DIAG_COLOR;
         // "Active" highlight applies to anything in the multi-selection
         // (so box-selected toolpaths all light up together) as well as
         // the single click-active toolpath.
@@ -252,8 +259,9 @@ export function buildToolpathOverlay() {
             poly.setAttribute("points", stroke.map(p => `${p[0]},${p[1]}`).join(" "));
             // Constant diagnostic width regardless of selection — the
             // blue halo behind communicates selection without altering
-            // the plot color or thickness.
-            poly.setAttribute("stroke-width", "0.6");
+            // the plot color or thickness. Drawn over the (full-opacity)
+            // artwork now, so a touch thicker to stand out clearly.
+            poly.setAttribute("stroke-width", "1.2");
             poly.setAttribute("vector-effect", "non-scaling-stroke");
             poly.setAttribute("opacity", "0.95");
             poly.setAttribute("pointer-events", "none");
