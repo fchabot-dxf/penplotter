@@ -1,28 +1,16 @@
-// Thin client for the penplotter Cloudflare Worker.
+// Thin client for the shared `projects-dansemur` Cloudflare Worker.
 //
-// Configuration (worker URL + API key) lives in
-// `app/js/cloud-config.local.js`, which is gitignored so the secret
-// never leaves the local machine.
+// Penplotter lives under the /penplotter path prefix and is KEYLESS — the
+// public worker URL is in cloud-config.js (safe to ship; nothing secret).
+// You can still override the URL/key at runtime from the Settings panel
+// (stored in localStorage), e.g. to point at a local/staging worker.
 //
-// On a fresh clone:
-//   1. `cp cloud-config.local.example.js cloud-config.local.js`
-//   2. Edit it with your own values.
-//
-// To rebuild the key on a new machine:
-//   - The worker secret on Cloudflare's side can't be read back. You
-//     either reuse the key you already noted down somewhere, or rotate
-//     it: `cd cloud && npx wrangler secret put API_KEY` (paste any
-//     random string, e.g. `openssl rand -hex 24`), then paste the
-//     SAME string into cloud-config.local.js so the frontend matches.
-//   - The worker URL is visible in the Cloudflare dashboard:
-//     https://dash.cloudflare.com → Workers & Pages → penplotter-cloud,
-//     or re-deploy with `cd cloud && npx wrangler deploy`.
-//
-// See `cloud-config.local.example.js` for the full step-by-step.
+// The worker source is not in this repo — it lives in
+// ../projects-dansemur-worker (one worker shared across several apps).
 
 import { WORKER_URL as DEFAULT_URL, API_KEY as DEFAULT_KEY } from "./cloud-config.js";
 
-// Routes used (see cloud/worker.js):
+// Routes used (handled by the worker's /penplotter prefix):
 //   GET    /palettes              → [{ id, customMeta.name, savedAt, size }]
 //   POST   /palettes              → { id, name }      body: { name, palette }
 //   GET    /palettes/:id          → { name, palette }

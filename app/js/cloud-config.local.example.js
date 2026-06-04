@@ -1,31 +1,12 @@
-// Template — copy this file to `cloud-config.local.js` (which is
-// gitignored) and fill in your own worker URL + API key.
+// Optional local override — copy this file to `cloud-config.local.js`
+// (gitignored) ONLY if you need to point the app at a different worker
+// (e.g. a local/staging deploy) or set an API key.
 //
-// ─── First-time setup on a fresh clone ──────────────────────────────
+// Normally you don't need this: the shipped cloud-config.js already points
+// at the shared, keyless `projects-dansemur` worker under /penplotter.
 //
-//  1. Get your worker URL.
-//        Already deployed? Find it at:
-//          https://dash.cloudflare.com → Workers & Pages → penplotter-cloud
-//        Not deployed yet? From the repo root:
-//          cd cloud
-//          npx wrangler deploy
-//        Wrangler prints the URL like
-//          https://penplotter-cloud.<your-subdomain>.workers.dev
-//
-//  2. (Re)set the API key.
-//        Cloudflare doesn't let you read an existing secret back. To
-//        rotate or rebuild the key:
-//          cd cloud
-//          npx wrangler secret put API_KEY
-//        It prompts; paste any random string (or generate one:
-//          openssl rand -hex 24
-//        ). Save that string somewhere safe — it's the password the
-//        frontend uses to authenticate against the worker.
-//
-//  3. Paste both values below, rename this file to
-//     `cloud-config.local.js`, and you're done.
-//
-// ────────────────────────────────────────────────────────────────────
+// You can also set these at runtime in the app's Settings panel (stored in
+// localStorage), which takes precedence over cloud-config.js.
 
-export const WORKER_URL = "https://penplotter-cloud.YOUR-SUBDOMAIN.workers.dev";
-export const API_KEY    = "PASTE-YOUR-API-KEY-HERE";
+export const WORKER_URL = "https://projects-dansemur.dansemur.workers.dev/penplotter";
+export const API_KEY    = "";
