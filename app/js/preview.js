@@ -271,16 +271,18 @@ function selectionDashes(strokes) {
     g.setAttribute("fill", "none");
     g.setAttribute("stroke", "#ff2e88");
     g.setAttribute("stroke-opacity", "0.65");
-    g.setAttribute("stroke-width", "0.6");
+    g.setAttribute("stroke-width", "1.2");
     g.setAttribute("stroke-dasharray", "3 2");
     g.setAttribute("stroke-linecap", "round");
     g.setAttribute("stroke-linejoin", "round");
-    g.setAttribute("vector-effect", "non-scaling-stroke");
     g.setAttribute("pointer-events", "none");
     for (const stroke of strokes) {
         if (stroke.length < 2) continue;
         const pl = document.createElementNS(SVG_NS, "polyline");
         pl.setAttribute("points", stroke.map(p => `${p[0]},${p[1]}`).join(" "));
+        // vector-effect doesn't inherit — must be on the polyline itself, or
+        // the 0.6 width is interpreted in mm and scales up thick when zoomed.
+        pl.setAttribute("vector-effect", "non-scaling-stroke");
         g.appendChild(pl);
     }
     return g;
