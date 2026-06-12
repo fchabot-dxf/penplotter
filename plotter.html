@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pen Plotter — DDCS</title>
+<link rel="stylesheet" href="styles/common.css">
+<link rel="stylesheet" href="styles/plotter.css">
+</head>
+<body>
+<header>
+  <h1>Pen Plotter</h1>
+  <span class="subtitle">SVG → DDCS Expert 1.1 G-code</span>
+  <span class="header-spacer"></span>
+  <a href="editor.html">Editor →</a>
+</header>
+
+<main>
+  <aside id="sidebar">
+    <div id="params-root">
+
+      <section>
+        <h2>Input</h2>
+        <input type="file" id="file" accept=".svg,image/svg+xml">
+        <div id="drop" class="drop-zone">…or drop SVG here</div>
+      </section>
+
+      <section>
+        <h2>Pen</h2>
+        <label>Preset
+          <select id="preset">
+            <option value="">— select preset —</option>
+          </select>
+        </label>
+        <label>Tip width (mm)
+          <input data-param="tipWidth" type="number" step="0.1" min="0.1">
+        </label>
+      </section>
+
+      <section>
+        <h2>Z heights</h2>
+        <label>Pen-up Z (mm)
+          <input data-param="penUpZ" type="number" step="0.1">
+        </label>
+        <label>Pen-down Z (mm)
+          <input data-param="penDownZ" type="number" step="0.1">
+        </label>
+      </section>
+
+      <section>
+        <h2>Feeds</h2>
+        <label>Draw feed (mm/min)
+          <input data-param="drawFeed" type="number" step="50">
+        </label>
+        <label>Rapid feed (mm/min)
+          <input data-param="rapidFeed" type="number" step="100">
+        </label>
+        <label>Pen lift feed (mm/min)
+          <input data-param="penLiftFeed" type="number" step="50">
+        </label>
+        <label>Pen drop feed (mm/min)
+          <input data-param="penDropFeed" type="number" step="50">
+        </label>
+        <label>Dwell after pen-down (s)
+          <input data-param="dwellAfterDown" type="number" step="0.1" min="0">
+        </label>
+      </section>
+
+      <section>
+        <h2>Hatch fills</h2>
+        <label class="checkbox-row">
+          <input data-param="hatchEnabled" type="checkbox">
+          Enable auto-hatch
+        </label>
+        <label>Angle (deg)
+          <input data-param="hatchAngle" type="number" step="5">
+        </label>
+        <label>Spacing (mm)
+          <input data-param="hatchSpacing" type="number" step="0.1" min="0.05">
+        </label>
+        <label>Inset (mm)
+          <input data-param="hatchInset" type="number" step="0.1" min="0">
+        </label>
+      </section>
+
+      <section>
+        <h2>Output</h2>
+        <button id="generate">Regenerate G-code</button>
+        <p style="margin:6px 0 0 0"></p>
+        <button id="download" disabled>Download .gcode</button>
+      </section>
+
+    </div>
+  </aside>
+
+  <div id="canvas-wrap">
+    <canvas id="preview" width="900" height="700"></canvas>
+  </div>
+
+  <section id="gcode-panel">
+    <h2>G-code preview</h2>
+    <textarea id="gcode" readonly spellcheck="false"></textarea>
+  </section>
+</main>
+
+<footer id="status">Ready — drop an SVG to get started.</footer>
+
+<script type="module" src="./src/plotter/plotter.js"></script>
+</body>
+</html>
